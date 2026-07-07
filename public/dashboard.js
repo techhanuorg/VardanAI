@@ -85,6 +85,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }, 1000);
     });
   });
+
+  // Export CSV Listeners
+  document.getElementById('export-appointments-csv-btn').addEventListener('click', exportAppointmentsToCSV);
+  document.getElementById('export-patients-csv-btn').addEventListener('click', exportPatientsToCSV);
 });
 
 /**
@@ -759,4 +763,49 @@ function escapeHtml(str) {
 function escapeJs(str) {
   if (!str) return '';
   return str.toString().replace(/'/g, "\\'");
+}
+
+/**
+ * CSV Exporters
+ */
+function downloadCSV(headers, keys, data, filename) {
+  const csvRows = [headers.join(',')];
+  for (const row of data) {
+    const values = keys.map(key => {
+      let val = row[key] || '';
+      const escaped = ('' + val).replace(/"/g, '""');
+      return `"${escaped}"`;
+    });
+    csvRows.push(values.join(','));
+  }
+  
+  const csvContent = "\uFEFF" + csvRows.join("\r\n"); // UTF-8 BOM for Excel compatibility
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function exportAppointmentsToCSV() {
+  if (!clinicData.appointments || clinicData.appointments.length === 0) {
+    alert('No appointments to export.');
+    return;
+  }
+  const headers = ['Patient ID', 'Patient Name', 'Phone', 'Age', 'Gender', 'Doctor', 'Date', 'Time', 'Problem', 'Status', 'Created At'];
+  const keys = ['patient_id', 'name', 'phone', 'age', 'gender', 'doctor', 'date', 'time', 'problem', 'status', 'created_at'];
+  downloadCSV(headers, keys, clinicData.appointments, 'appointments_report.csv');
+}
+
+function exportPatientsToCSV() {
+  if (!clinicData.patients || clinicData.patients.length === 0) {
+    alert('No patients to export.');
+    return;
+  }
+  const headers = ['ID', 'Name', 'Phone', 'Age', 'Gender', 'Registered Date'];
+  const keys = ['id', 'name', 'phone', 'age', 'gender', 'created_at'];
+  downloadCSV(headers, keys, clinicData.patients, 'patients_report.csv');
 }

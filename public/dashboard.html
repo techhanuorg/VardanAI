@@ -198,11 +198,13 @@
               </table>
             </div>
           </div>
-
           <!-- Tab 2: Appointments Details -->
           <div class="tab-content" id="tab-appointments">
-            <div class="section-title-row">
+            <div class="section-title-row" style="display: flex; justify-content: space-between; align-items: center;">
               <h2>Appointment Booking Log</h2>
+              <button class="btn btn-secondary" id="export-appointments-csv-btn" style="padding: 6px 12px; font-size: 0.85rem;">
+                <i class="fa-solid fa-file-csv"></i> Export CSV
+              </button>
             </div>
             <div class="table-scroll">
               <table class="data-table">
@@ -224,11 +226,14 @@
               </table>
             </div>
           </div>
-
+ 
           <!-- Tab 3: Patients Registry Details -->
           <div class="tab-content" id="tab-patients">
-            <div class="section-title-row">
+            <div class="section-title-row" style="display: flex; justify-content: space-between; align-items: center;">
               <h2>Registered Patient Database</h2>
+              <button class="btn btn-secondary" id="export-patients-csv-btn" style="padding: 6px 12px; font-size: 0.85rem;">
+                <i class="fa-solid fa-file-csv"></i> Export CSV
+              </button>
             </div>
             <div class="table-scroll">
               <table class="data-table">
@@ -242,7 +247,7 @@
                     <th>Registered Date</th>
                     <th>Action</th>
                   </tr>
-                </thead>
+                </thead>>
                 <tbody id="patients-table-body">
                   <tr class="empty-row"><td colspan="7">No registered patients.</td></tr>
                 </tbody>
