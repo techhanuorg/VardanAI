@@ -2,7 +2,30 @@ const { GoogleGenAI } = require('@google/genai');
 const { GEMINI_API_KEY, logger } = require('./config');
 const { SYSTEM_PROMPT } = require('./prompts');
 
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+// Load and parse API keys from environment config (handles single key or comma-separated list)
+const apiKeys = GEMINI_API_KEY ? GEMINI_API_KEY.split(',').map(k => k.trim()) : [];
+let currentKeyIndex = 0;
+
+/**
+ * Returns a GoogleGenAI client instance using the currently active API key.
+ */
+function getAIClient() {
+  if (apiKeys.length === 0) {
+    throw new Error('No Gemini API keys found in the environment configuration.');
+  }
+  const key = apiKeys[currentKeyIndex];
+  return new GoogleGenAI({ apiKey: key });
+}
+
+/**
+ * Rotates to the next API key in the list. Returns true if rotation was successful.
+ */
+function rotateAPIKey() {
+  if (apiKeys.length <= 1) return false;
+  currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
+  logger.warn(`Gemini API limit or error hit. Rotating to API Key Index: ${currentKeyIndex} (${apiKeys[currentKeyIndex].substring(0, 10)}...)`);
+  return true;
+}
 
 /**
  * Sends a message to Gemini and handles function calling if requested.
@@ -37,7 +60,8 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, onP
       
       while (retries > 0) {
         try {
-          response = await ai.models.generateContent({
+          const aiClient = getAIClient();
+          response = await aiClient.models.generateContent({
             model: 'gemini-flash-latest',
             contents: contents,
             config: {
@@ -76,6 +100,14 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, onP
           });
           break;
         } catch (err) {
+          // If we hit a rate limit or API error, try rotating the API key first
+          const rotated = rotateAPIKey();
+          if (rotated) {
+            logger.info('Rotated API Key, retrying content generation immediately...');
+            // Don't decrement retries since we successfully rotated to a fresh key
+            continue;
+          }
+          
           retries--;
           if (retries === 0) throw err;
           logger.warn(`Gemini API error (remaining retries: ${retries}): ${err.message}. Retrying in ${delay}ms...`);
