@@ -193,7 +193,7 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, onP
       try {
         // Try native Google GenAI client first
         let retries = 3;
-        let delay = 3000; // Increased delay to 3 seconds to avoid rate-limit thrashing
+        let delay = 1000; // 1s initial delay for transient errors
         
         while (retries > 0) {
           try {
@@ -208,6 +208,14 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, onP
             });
             break;
           } catch (err) {
+            // If it's a quota limit error (429), bypass retries and fallback to OpenRouter instantly
+            const isQuotaError = err.status === 429 || 
+                                 (err.message && (err.message.includes('429') || err.message.includes('Quota exceeded') || err.message.includes('RESOURCE_EXHAUSTED')));
+            if (isQuotaError) {
+              logger.warn('Gemini free tier quota exhausted. Falling back to OpenRouter instantly without retry delays.');
+              throw err;
+            }
+
             const rotated = rotateAPIKey();
             if (rotated) {
               logger.info('Rotated Gemini API Key, retrying content generation immediately...');
