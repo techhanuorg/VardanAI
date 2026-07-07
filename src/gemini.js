@@ -88,7 +88,7 @@ async function callOpenRouter(contents, tools) {
   }) : undefined;
 
   const requestBody = {
-    model: 'google/gemini-2.0-flash-exp:free', // 100% free model supporting tools
+    model: 'openrouter/free', // Automatically routes to best available free model supporting tool calls
     messages,
     tools: openAITools
   };
@@ -193,7 +193,7 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, onP
       try {
         // Try native Google GenAI client first
         let retries = 3;
-        let delay = 1500;
+        let delay = 3000; // Increased delay to 3 seconds to avoid rate-limit thrashing
         
         while (retries > 0) {
           try {
@@ -242,8 +242,8 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, onP
               logger.error(`OpenRouter failover exhausted all attempts: ${orErr.message}`);
               throw new Error(`Both native Gemini and OpenRouter failed. Last error: ${orErr.message}`);
             }
-            logger.warn(`OpenRouter error, retrying in 2000ms...`);
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            logger.warn(`OpenRouter error, retrying in 3000ms...`);
+            await new Promise(resolve => setTimeout(resolve, 3000));
           }
         }
       }
