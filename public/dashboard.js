@@ -69,6 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupModalListeners();
   setupSSE();
   reloadData();
+  setupWhatsAppQrCheck();
 
   elements.closeChatBtn.addEventListener('click', closeChatLogs);
   elements.chatOverlay.addEventListener('click', (e) => {
@@ -808,4 +809,50 @@ function exportPatientsToCSV() {
   const headers = ['ID', 'Name', 'Phone', 'Age', 'Gender', 'Registered Date'];
   const keys = ['id', 'name', 'phone', 'age', 'gender', 'created_at'];
   downloadCSV(headers, keys, clinicData.patients, 'patients_report.csv');
+}
+
+/**
+ * WhatsApp QR Authorization Checker
+ */
+let lastRenderedQr = null;
+
+function setupWhatsAppQrCheck() {
+  const qrModal = document.getElementById('qr-modal');
+  const qrCanvas = document.getElementById('qr-code-canvas');
+  
+  async function checkAuth() {
+    try {
+      const res = await fetch('/api/qr').then(r => r.json());
+      if (res.success) {
+        if (res.isConnected) {
+          qrModal.classList.remove('open');
+          lastRenderedQr = null;
+        } else if (res.qr) {
+          qrModal.classList.add('open');
+          if (res.qr !== lastRenderedQr) {
+            lastRenderedQr = res.qr;
+            qrCanvas.innerHTML = '';
+            new QRCode(qrCanvas, {
+              text: res.qr,
+              width: 218,
+              height: 218,
+              colorDark: '#0f1524',
+              colorLight: '#ffffff',
+              correctLevel: QRCode.CorrectLevel.H
+            });
+          }
+        } else {
+          qrModal.classList.add('open');
+          qrCanvas.innerHTML = '<div class="qr-placeholder"><i class="fa-solid fa-spinner fa-spin"></i> Generating QR...</div>';
+          lastRenderedQr = null;
+        }
+      }
+    } catch (err) {
+      console.error('Error checking WhatsApp auth status:', err);
+    }
+  }
+
+  // Poll status every 3 seconds
+  checkAuth();
+  setInterval(checkAuth, 3000);
 }

@@ -394,6 +394,26 @@
     </div>
   </div>
 
+  <!-- WhatsApp Login QR Overlay Modal -->
+  <div class="qr-modal-overlay" id="qr-modal">
+    <div class="qr-modal-content">
+      <header class="qr-modal-header">
+        <h3><i class="fa-brands fa-whatsapp" style="color: #25D366; font-size: 1.6rem;"></i> Link Receptionist</h3>
+      </header>
+      <div class="qr-body">
+         <p class="qr-instruction">Scan this QR code from your phone's WhatsApp (Linked Devices) to authorize the receptionist bot.</p>
+         <div class="qr-code-wrapper">
+           <div id="qr-code-canvas">
+             <div class="qr-placeholder"><i class="fa-solid fa-spinner fa-spin"></i> Generating QR...</div>
+           </div>
+         </div>
+         <p class="qr-footer-hint">The dashboard will load automatically once scanned.<br>Verify your phone is connected to the internet.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR Code library CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Javascript File -->
   <script src="dashboard.js"></script>
 </body>

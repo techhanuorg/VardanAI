@@ -11,6 +11,7 @@ const { executeAppointmentBooking } = require('./appointments');
 
 let sock = null;
 let isConnected = false;
+let currentQr = null;
 
 /**
  * Initializes and starts the WhatsApp bot socket connection.
@@ -43,6 +44,7 @@ async function startBot() {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
+      currentQr = qr;
       logger.info('--- Scan QR Code below to connect the WhatsApp AI Receptionist ---');
       qrcodeTerminal.generate(qr, { small: true });
     }
@@ -64,6 +66,7 @@ async function startBot() {
       }
     } else if (connection === 'open') {
       isConnected = true;
+      currentQr = null; // Clear QR when connected
       logger.info('WhatsApp AI Receptionist successfully connected and active!');
     }
   });
@@ -170,5 +173,6 @@ async function startBot() {
 module.exports = {
   startBot,
   getSock: () => sock,
-  getIsConnected: () => isConnected
+  getIsConnected: () => isConnected,
+  getCurrentQr: () => currentQr
 };

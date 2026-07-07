@@ -72,6 +72,25 @@ setInterval(() => {
 }, 25000);
 
 /**
+ * API: Get current WhatsApp QR code connection status
+ */
+app.get('/api/qr', (req, res) => {
+  try {
+    const bot = require('./bot');
+    const qr = bot.getCurrentQr ? bot.getCurrentQr() : null;
+    const isConnected = bot.getIsConnected ? bot.getIsConnected() : false;
+    res.json({
+      success: true,
+      qr,
+      isConnected
+    });
+  } catch (error) {
+    logger.error('Error fetching QR status:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * API: Get card stats
  */
 app.get('/api/stats', (req, res) => {
