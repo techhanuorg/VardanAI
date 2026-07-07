@@ -154,7 +154,7 @@ async function startBot() {
             addMessageToHistory(phone, 'model', replyText);
           }
         } catch (innerErr) {
-          logger.error(`Error processing message from [${phone}]:`, innerErr);
+          logger.error(`Error processing message from [${phone}]: ${innerErr.message}`, innerErr);
           try {
             const fallbackText = "Namaste. Hospital server par temporary high traffic hai. Kripya ek baar fir se message likhein, ya direct call karein: +91-9876543210.";
             await sock.sendMessage(remoteJid, { text: fallbackText });
