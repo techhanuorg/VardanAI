@@ -88,7 +88,7 @@ async function callOpenRouter(contents, tools) {
   }) : undefined;
 
   const requestBody = {
-    model: 'google/gemini-2.5-flash', // Cost-effective stable flash model
+    model: 'google/gemini-2.0-flash-exp:free', // 100% free model supporting tools
     messages,
     tools: openAITools
   };
