@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Local databases
+data/
+*.db
+
+# WhatsApp Session Auth
+auth/
+
+# Environment configurations
+.env
+.env.local
+
+# Logging and temp files
+*.log
+npm-debug.log*
+.npm/
+
+# OS specific files
+.DS_Store
+Thumbs.db

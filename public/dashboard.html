@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vardan Hospital | AI Clinic Dashboard</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+
+  <!-- App Wrapper -->
+  <div class="app-container">
+    
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <i class="fa-solid fa-hospital-user"></i>
+          <span>Vardan AI</span>
+        </div>
+        <div class="status-indicator-badge online" id="ws-status">
+          <span class="pulse-dot"></span>
+          <span class="status-text">Live Synced</span>
+        </div>
+      </div>
+      
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-tab="overview">
+          <i class="fa-solid fa-chart-line"></i> Overview
+        </button>
+        <button class="nav-item" data-tab="appointments">
+          <i class="fa-solid fa-calendar-check"></i> Appointments
+        </button>
+        <button class="nav-item" data-tab="patients">
+          <i class="fa-solid fa-users"></i> Patients Registry
+        </button>
+        <button class="nav-item" data-tab="critical">
+          <i class="fa-solid fa-triangle-exclamation"></i> Critical Alerts
+        </button>
+        <button class="nav-item" data-tab="chats">
+          <i class="fa-solid fa-comments"></i> Patient Chats
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <p>© 2026 Vardan Hospital</p>
+        <span>SQLite v1.0.0</span>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      
+      <!-- Top header bar -->
+      <header class="top-bar">
+        <div class="page-title-section">
+          <h1 id="page-title">Clinic Control Center</h1>
+          <p class="subtitle" id="current-time-display">Real-time status of Vardan Hospital Receptionist</p>
+        </div>
+        <div class="top-bar-actions">
+          <button class="btn btn-primary" id="open-booking-modal-btn" style="background: var(--clr-indigo); border: none; color: #fff;">
+            <i class="fa-solid fa-calendar-plus"></i> Book Manually
+          </button>
+          <button class="btn btn-secondary" id="refresh-cache-btn">
+            <i class="fa-solid fa-arrows-rotate"></i> Refresh Cache
+          </button>
+        </div>
+      </header>
+
+      <!-- Stats Grid -->
+      <section class="stats-grid">
+        <!-- Card 1 -->
+        <div class="stat-card" id="card-patients">
+          <div class="stat-icon bg-cyan">
+            <i class="fa-solid fa-hospital-user"></i>
+          </div>
+          <div class="stat-info">
+            <h3 class="stat-value" id="stat-patients-today">0</h3>
+            <p class="stat-label">Today's Patients</p>
+          </div>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="stat-card" id="card-appointments">
+          <div class="stat-icon bg-indigo">
+            <i class="fa-solid fa-calendar-check"></i>
+          </div>
+          <div class="stat-info">
+            <h3 class="stat-value" id="stat-appointments-today">0</h3>
+            <p class="stat-label">Today's Bookings</p>
+          </div>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="stat-card critical" id="card-critical">
+          <div class="stat-icon bg-rose">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+          </div>
+          <div class="stat-info">
+            <h3 class="stat-value" id="stat-critical-cases">0</h3>
+            <p class="stat-label">Critical Alerts</p>
+          </div>
+          <span class="alert-pulse" id="critical-alert-pulse"></span>
+        </div>
+
+        <!-- Card 4 -->
+        <div class="stat-card" id="card-chats">
+          <div class="stat-icon bg-amber">
+            <i class="fa-solid fa-comments"></i>
+          </div>
+          <div class="stat-info">
+            <h3 class="stat-value" id="stat-active-chats">0</h3>
+            <p class="stat-label">Recent Chats</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Charts Section (Overview Tab Only) -->
+      <section class="charts-section-grid" id="overview-charts-grid">
+        <div class="chart-card glass-container">
+          <div class="chart-header-row">
+            <h3>Appointment Daily Timeline</h3>
+          </div>
+          <div class="chart-wrapper">
+            <canvas id="appointments-trend-chart"></canvas>
+          </div>
+        </div>
+        <div class="chart-card glass-container pie-card">
+          <div class="chart-header-row">
+            <h3>Doctor Consultation Distribution</h3>
+          </div>
+          <div class="chart-wrapper">
+            <canvas id="doctor-share-chart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Dashboard Body -->
+      <div class="dashboard-body">
+
+        <!-- Controls Bar -->
+        <div class="controls-bar">
+          <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="search-input" placeholder="Search by name, phone, symptom or doctor...">
+          </div>
+          
+          <div class="filter-group" id="filter-container">
+            <select id="status-filter" class="filter-dropdown">
+              <option value="all">All Statuses</option>
+              <option value="booked">Booked</option>
+              <option value="active">Active Critical</option>
+            </select>
+            <select id="doctor-filter" class="filter-dropdown">
+              <option value="all">All Doctors</option>
+              <option value="Dr. Alok Sharma">Dr. Alok Sharma</option>
+              <option value="Dr. Sunita Verma">Dr. Sunita Verma</option>
+              <option value="Dr. Vikas Gupta">Dr. Vikas Gupta</option>
+              <option value="Dr. Rajesh Iyer">Dr. Rajesh Iyer</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="data-table-container glass-container">
+          
+          <!-- Tab 1: Overview -->
+          <div class="tab-content active" id="tab-overview">
+            <div class="section-title-row">
+              <h2>Recent Appointments & Alerts</h2>
+              <span class="badge badge-info">Real-time Stream</span>
+            </div>
+            
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr id="overview-headers">
+                    <th>Patient</th>
+                    <th>Contact</th>
+                    <th>Detail</th>
+                    <th>Status</th>
+                    <th>Time</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="overview-table-body">
+                  <tr class="empty-row"><td colspan="6">Loading clinic data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tab 2: Appointments Details -->
+          <div class="tab-content" id="tab-appointments">
+            <div class="section-title-row">
+              <h2>Appointment Booking Log</h2>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Patient</th>
+                    <th>Phone</th>
+                    <th>Gender & Age</th>
+                    <th>Problem</th>
+                    <th>Doctor Selected</th>
+                    <th>Date & Time</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="appointments-table-body">
+                  <tr class="empty-row"><td colspan="8">No appointments found.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tab 3: Patients Registry Details -->
+          <div class="tab-content" id="tab-patients">
+            <div class="section-title-row">
+              <h2>Registered Patient Database</h2>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Patient Name</th>
+                    <th>Phone Number</th>
+                    <th>Age</th>
+                    <th>Gender</th>
+                    <th>Registered Date</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="patients-table-body">
+                  <tr class="empty-row"><td colspan="7">No registered patients.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tab 4: Critical alerts details -->
+          <div class="tab-content" id="tab-critical">
+            <div class="section-title-row">
+              <h2>Emergency Case Alerts</h2>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Patient</th>
+                    <th>Phone</th>
+                    <th>Reported Symptoms</th>
+                    <th>Status</th>
+                    <th>Alert Date</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="critical-table-body">
+                  <tr class="empty-row"><td colspan="6">No critical cases detected.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tab 5: Recent Chats -->
+          <div class="tab-content" id="tab-chats">
+            <div class="section-title-row">
+              <h2>Recent WhatsApp Chats</h2>
+            </div>
+            <div class="chat-thread-list" id="chat-threads-container">
+              <p class="empty-text">No active conversations found.</p>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- Chat Log Viewer Drawer / Overlay -->
+  <div class="chat-viewer-overlay" id="chat-overlay">
+    <div class="chat-viewer-modal">
+      <header class="chat-header">
+        <div class="chat-patient-meta">
+          <h3 id="overlay-patient-name">Patient Name</h3>
+          <p id="overlay-patient-phone">+91 00000 00000</p>
+        </div>
+        <button class="chat-close-btn" id="close-chat-btn">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </header>
+      
+      <!-- Conversation Message Stream -->
+      <div class="chat-history-stream" id="chat-stream-body">
+        <!-- Messages loaded dynamically -->
+      </div>
+      
+      <footer class="chat-footer-note">
+        <i class="fa-solid fa-lock"></i> Chat logs synced live from SQLite Database
+      </footer>
+    </div>
+  </div>
+
+  <!-- Manual Booking Modal Overlay -->
+  <div class="booking-modal-overlay" id="booking-modal">
+    <div class="booking-modal-content">
+      <header class="booking-modal-header">
+        <h3><i class="fa-solid fa-calendar-plus"></i> Book Appointment Manually</h3>
+        <button class="booking-close-btn" id="close-booking-modal-btn">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </header>
+      
+      <form id="manual-booking-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="book-name">Patient Name *</label>
+            <input type="text" id="book-name" placeholder="Full Name" required autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="book-phone">Phone Number *</label>
+            <input type="text" id="book-phone" placeholder="e.g. 919876543210" required autocomplete="off">
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="book-age">Age *</label>
+            <input type="number" id="book-age" placeholder="Age" required autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="book-gender">Gender *</label>
+            <select id="book-gender" required>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="book-doctor">Doctor Select *</label>
+            <select id="book-doctor" required>
+              <option value="Dr. Alok Sharma">Dr. Alok Sharma (General Physician)</option>
+              <option value="Dr. Sunita Verma">Dr. Sunita Verma (Pediatrician)</option>
+              <option value="Dr. Vikas Gupta">Dr. Vikas Gupta (Cardiologist)</option>
+              <option value="Dr. Rajesh Iyer">Dr. Rajesh Iyer (Orthopedic)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="book-date">Appointment Date *</label>
+            <input type="date" id="book-date" required>
+          </div>
+          <div class="form-group">
+            <label for="book-time">Time Slot *</label>
+            <input type="text" id="book-time" placeholder="e.g. 11:30 AM" required autocomplete="off">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="book-problem">Medical Problem / Description</label>
+          <textarea id="book-problem" placeholder="Describe symptoms or reason for consulting..." rows="3"></textarea>
+        </div>
+
+        <div class="modal-form-actions">
+          <button type="button" class="btn btn-secondary" id="cancel-booking-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background: var(--clr-indigo); border: none; color: #fff;">Confirm Booking</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Javascript File -->
+  <script src="dashboard.js"></script>
+</body>
+</html>
