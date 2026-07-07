@@ -88,7 +88,7 @@ async function callOpenRouter(contents, tools) {
   }) : undefined;
 
   const requestBody = {
-    model: 'openrouter/free', // Automatically routes to best available free model supporting tool calls
+    model: 'meta-llama/llama-3.1-8b-instruct:free', // Fast free model supporting tool calling
     messages,
     tools: openAITools
   };
