@@ -144,11 +144,11 @@ async function callOpenRouter(contents, tools, systemInstruction) {
 /**
  * Sends a message to Gemini (or OpenRouter fallback) and handles function calling if requested.
  */
-async function generateReceptionistResponse(phone, userMessage, chatHistory, onProfileUpdate, onBookAppointment) {
+async function generateReceptionistResponse(phone, userMessage, chatHistory, language, onProfileUpdate, onBookAppointment) {
   // Fetch active doctors dynamically from database
   const doctorsList = db.getDoctors();
   const doctorsDescription = doctorsList.map(d => `${d.name} (${d.department})`).join(', ');
-  const systemInstruction = getSystemPrompt(doctorsList);
+  const systemInstruction = getSystemPrompt(doctorsList, language);
 
   // Define tools dynamically using database doctors list
   const functionDeclarations = [

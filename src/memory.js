@@ -19,6 +19,7 @@ function recoverSessionFromDB(phone) {
     name: patientProfile?.name || null,
     age: patientProfile?.age || null,
     gender: patientProfile?.gender || null,
+    language: patientProfile?.language || null,
     problem: null,
     doctor: null,
     preferredDate: null,

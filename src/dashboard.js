@@ -1,10 +1,42 @@
 const express = require('express');
 const path = require('path');
+const cookieParser = require('cookie-parser');
 const { PORT, logger } = require('./config');
 const db = require('./db');
 
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
+
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'vardan123';
+
+// Auth verification middleware
+function requireAuth(req, res, next) {
+  const bypassPaths = [
+    '/login.html',
+    '/login.css',
+    '/login.js',
+    '/api/login',
+    '/favicon.ico'
+  ];
+  
+  if (bypassPaths.includes(req.path)) {
+    return next();
+  }
+
+  if (req.cookies && req.cookies.session_token === 'authorized') {
+    return next();
+  }
+
+  if (req.path.startsWith('/api/')) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  res.redirect('/login.html');
+}
+
+// Apply authentication shield
+app.use(requireAuth);
 
 // Serve dashboard static files
 app.use(express.static(path.join(__dirname, '../public')));
@@ -12,6 +44,32 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Root route redirects to dashboard
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/dashboard.html'));
+});
+
+/**
+ * API: Security Authentication Login
+ */
+app.post('/api/login', (req, res) => {
+  try {
+    const { password } = req.body;
+    if (password === ADMIN_PASSWORD) {
+      res.cookie('session_token', 'authorized', { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
+      res.json({ success: true });
+    } else {
+      res.status(401).json({ success: false, error: 'Incorrect password.' });
+    }
+  } catch (error) {
+    logger.error('Login API error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * API: Security Authentication Logout
+ */
+app.post('/api/logout', (req, res) => {
+  res.clearCookie('session_token');
+  res.json({ success: true });
 });
 
 // List of connected SSE clients
@@ -176,11 +234,11 @@ app.get('/api/doctors', (req, res) => {
  */
 app.post('/api/doctors', (req, res) => {
   try {
-    const { name, specialty, department } = req.body;
+    const { name, specialty, department, phone } = req.body;
     if (!name || !specialty || !department) {
       return res.status(400).json({ success: false, error: 'Missing required doctor fields (name, specialty, department).' });
     }
-    const doc = db.saveDoctor({ name, specialty, department });
+    const doc = db.saveDoctor({ name, specialty, department, phone: phone || '' });
     res.json({ success: true, data: doc });
   } catch (error) {
     logger.error('Error adding doctor:', error);
@@ -205,7 +263,7 @@ app.delete('/api/doctors/:id', (req, res) => {
 /**
  * API: Manual appointment booking
  */
-app.post('/api/book', (req, res) => {
+app.post('/api/book', async (req, res) => {
   try {
     const { name, phone, age, gender, doctor, date, time, problem } = req.body;
     
@@ -224,9 +282,68 @@ app.post('/api/book', (req, res) => {
       problem: problem || ''
     });
 
+    // Notify the doctor via WhatsApp if their phone number is registered
+    try {
+      const docRecord = db.db.prepare('SELECT phone FROM doctors WHERE name = ?').get(doctor);
+      const botInstance = require('./bot');
+      const sock = botInstance.getSock();
+      if (sock && docRecord && docRecord.phone && docRecord.phone.trim()) {
+        const docJid = `${docRecord.phone.trim()}@s.whatsapp.net`;
+        const notificationMsg = `*Vardan Hospital Notification* 🏥\n\nHello Doctor, a new appointment has been booked manually from the dashboard:\n\n👤 *Patient:* ${name}\n📅 *Date:* ${date}\n⏰ *Time Slot:* ${time}\n❓ *Problem:* ${problem || 'N/A'}\n📱 *Patient Phone:* +${phone}`;
+        await sock.sendMessage(docJid, { text: notificationMsg });
+        logger.info(`Manually booked appointment notification sent to Doctor: ${doctor} (${docRecord.phone})`);
+      }
+    } catch (sendErr) {
+      logger.error(`Failed to send manual booking notification to doctor: ${sendErr.message}`);
+    }
+
     res.json({ success: true, data: appt });
   } catch (error) {
     logger.error('Error booking manual appointment:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * API: Get all follow-ups
+ */
+app.get('/api/followups', (req, res) => {
+  try {
+    const list = db.getFollowups();
+    res.json({ success: true, data: list });
+  } catch (error) {
+    logger.error('Error fetching follow-ups:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * API: Schedule a new follow-up
+ */
+app.post('/api/followups', (req, res) => {
+  try {
+    const { patient_phone, patient_name, message, scheduled_date } = req.body;
+    if (!patient_phone || !patient_name || !message || !scheduled_date) {
+      return res.status(400).json({ success: false, error: 'Missing required follow-up fields (patient_phone, patient_name, message, scheduled_date).' });
+    }
+    const followup = db.saveFollowup({ patient_phone, patient_name, message, scheduled_date });
+    res.json({ success: true, data: followup });
+  } catch (error) {
+    logger.error('Error scheduling follow-up:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * API: Delete a scheduled follow-up
+ */
+app.delete('/api/followups/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const item = db.deleteFollowup(Number(id));
+    res.json({ success: true, data: item });
+  } catch (error) {
+    logger.error('Error deleting follow-up:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

@@ -5,7 +5,8 @@ let clinicData = {
   patients: [],
   critical: [],
   chats: [],
-  doctors: []
+  doctors: [],
+  followups: []
 };
 
 // Charts instances
@@ -56,6 +57,14 @@ const elements = {
   openDoctorModalBtn: document.getElementById('open-doctor-modal-btn'),
   closeDoctorModalBtn: document.getElementById('close-doctor-modal-btn'),
   cancelDoctorBtn: document.getElementById('cancel-doctor-btn'),
+
+  followupsTableBody: document.getElementById('followups-table-body'),
+  followupModal: document.getElementById('followup-modal'),
+  scheduleFollowupForm: document.getElementById('schedule-followup-form'),
+  openFollowupModalBtn: document.getElementById('open-followup-modal-btn'),
+  closeFollowupModalBtn: document.getElementById('close-followup-modal-btn'),
+  cancelFollowupBtn: document.getElementById('cancel-followup-btn'),
+  logoutBtn: document.getElementById('logout-btn'),
   
   pageTitle: document.getElementById('page-title'),
   refreshCacheBtn: document.getElementById('refresh-cache-btn'),
@@ -76,6 +85,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSearchAndFilters();
   setupModalListeners();
   setupDoctorModalListeners();
+  setupFollowupModalListeners();
+  setupLogoutListener();
   setupSSE();
   reloadData();
   setupWhatsAppQrCheck();
@@ -204,6 +215,9 @@ function updateTabVisibility() {
     } else if (activeTab === 'doctors') {
       elements.pageTitle.textContent = 'Doctors Directory';
       elements.filterContainer.style.display = 'none';
+    } else if (activeTab === 'followups') {
+      elements.pageTitle.textContent = 'Scheduled Follow-ups';
+      elements.filterContainer.style.display = 'none';
     }
   }
 
@@ -301,12 +315,13 @@ function setupDoctorModalListeners() {
     const name = document.getElementById('doc-name').value.trim();
     const department = document.getElementById('doc-department').value.trim();
     const specialty = document.getElementById('doc-specialty').value.trim();
+    const phone = document.getElementById('doc-phone').value.trim();
 
     try {
       const res = await fetch('/api/doctors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, specialty, department })
+        body: JSON.stringify({ name, specialty, department, phone })
       }).then(r => r.json());
 
       if (res.success) {
@@ -327,13 +342,14 @@ function setupDoctorModalListeners() {
  */
 async function reloadData() {
   try {
-    const [statsRes, apptsRes, patientsRes, critRes, chatsRes, docsRes] = await Promise.all([
+    const [statsRes, apptsRes, patientsRes, critRes, chatsRes, docsRes, followsRes] = await Promise.all([
       fetch('/api/stats').then(r => r.json()),
       fetch('/api/appointments').then(r => r.json()),
       fetch('/api/patients').then(r => r.json()),
       fetch('/api/critical').then(r => r.json()),
       fetch('/api/chats').then(r => r.json()),
-      fetch('/api/doctors').then(r => r.json())
+      fetch('/api/doctors').then(r => r.json()),
+      fetch('/api/followups').then(r => r.json())
     ]);
 
     if (statsRes.success) clinicData.stats = statsRes.data;
@@ -345,6 +361,7 @@ async function reloadData() {
       clinicData.doctors = docsRes.data;
       populateDoctorDropdowns();
     }
+    if (followsRes.success) clinicData.followups = followsRes.data;
 
     renderData();
     updateCharts();
@@ -382,6 +399,8 @@ function renderData() {
     renderChatsFeed();
   } else if (activeTab === 'doctors') {
     renderDoctorsTable();
+  } else if (activeTab === 'followups') {
+    renderFollowupsTable();
   }
 }
 
@@ -968,7 +987,10 @@ function renderDoctorsTable() {
     return `
       <tr>
         <td>#${doc.id}</td>
-        <td style="font-weight:600;color:var(--clr-indigo)">${escapeHtml(doc.name)}</td>
+        <td style="font-weight:600;color:var(--clr-indigo)">
+          <div>${escapeHtml(doc.name)}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);font-weight:400">${doc.phone ? 'WhatsApp: +' + escapeHtml(doc.phone) : 'No alerts configured'}</div>
+        </td>
         <td><span class="badge badge-info">${escapeHtml(doc.department)}</span></td>
         <td>${escapeHtml(doc.specialty)}</td>
         <td>${displayTime}</td>
@@ -1001,4 +1023,141 @@ async function deleteDoctor(id) {
     console.error(err);
     alert('Network error while deleting doctor.');
   }
+}
+
+/**
+ * Follow-up Modal & Scheduler handlers
+ */
+function setupFollowupModalListeners() {
+  const modal = document.getElementById('followup-modal');
+  const openBtn = document.getElementById('open-followup-modal-btn');
+  const closeBtn = document.getElementById('close-followup-modal-btn');
+  const cancelBtn = document.getElementById('cancel-followup-btn');
+  const form = document.getElementById('schedule-followup-form');
+
+  if (!modal || !openBtn) return;
+
+  openBtn.addEventListener('click', () => {
+    modal.classList.add('open');
+    // Set default follow-up date as tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById('follow-date').value = tomorrow.toISOString().split('T')[0];
+  });
+
+  const closeModal = () => {
+    modal.classList.remove('open');
+    form.reset();
+  };
+
+  closeBtn.addEventListener('click', closeModal);
+  cancelBtn.addEventListener('click', closeModal);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const patient_name = document.getElementById('follow-name').value.trim();
+    const patient_phone = document.getElementById('follow-phone').value.trim();
+    const message = document.getElementById('follow-message').value.trim();
+    const scheduled_date = document.getElementById('follow-date').value;
+
+    try {
+      const res = await fetch('/api/followups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patient_phone, patient_name, message, scheduled_date })
+      }).then(r => r.json());
+
+      if (res.success) {
+        closeModal();
+        reloadData();
+      } else {
+        alert('Error scheduling follow-up: ' + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error while scheduling follow-up.');
+    }
+  });
+}
+
+/**
+ * Render Follow-ups Campaign table
+ */
+function renderFollowupsTable() {
+  let filtered = [...clinicData.followups];
+  if (searchQuery) {
+    filtered = filtered.filter(f => 
+      f.patient_name.toLowerCase().includes(searchQuery) ||
+      f.patient_phone.includes(searchQuery) ||
+      f.message.toLowerCase().includes(searchQuery)
+    );
+  }
+
+  if (filtered.length === 0) {
+    elements.followupsTableBody.innerHTML = '<tr class="empty-row"><td colspan="7">No scheduled follow-up campaigns found.</td></tr>';
+    return;
+  }
+
+  elements.followupsTableBody.innerHTML = filtered.map(f => {
+    const statusClass = f.status === 'Sent' ? 'badge-success' : (f.status === 'Pending' ? 'badge-warning' : 'badge-danger');
+    return `
+      <tr>
+        <td>#${f.id}</td>
+        <td style="font-weight:600">${escapeHtml(f.patient_name)}</td>
+        <td>${escapeHtml(f.patient_phone)}</td>
+        <td style="max-width:300px;font-size:0.85rem">${escapeHtml(f.message)}</td>
+        <td style="font-weight:600">${escapeHtml(f.scheduled_date)}</td>
+        <td><span class="badge ${statusClass}">${f.status}</span></td>
+        <td>
+          <button class="btn-sm" onclick="deleteFollowup(${f.id})" style="background:var(--clr-rose);border:none;color:#fff;cursor:pointer;padding:4px 8px;border-radius:4px;">
+            <i class="fa-solid fa-trash-can"></i> Delete
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * Delete a follow-up campaign alert
+ */
+async function deleteFollowup(id) {
+  if (!confirm('Are you sure you want to delete this scheduled follow-up?')) return;
+  try {
+    const res = await fetch(`/api/followups/${id}`, {
+      method: 'DELETE'
+    }).then(r => r.json());
+
+    if (res.success) {
+      reloadData();
+    } else {
+      alert('Error deleting follow-up: ' + res.error);
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Network error while deleting follow-up.');
+  }
+}
+
+/**
+ * Logs out administrator session
+ */
+function setupLogoutListener() {
+  const logoutBtn = document.getElementById('logout-btn');
+  if (!logoutBtn) return;
+
+  logoutBtn.addEventListener('click', async () => {
+    if (!confirm('Are you sure you want to log out of the admin panel?')) return;
+    try {
+      const res = await fetch('/api/logout', { method: 'POST' }).then(r => r.json());
+      if (res.success) {
+        window.location.href = '/login.html';
+      } else {
+        alert('Error logging out.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error logging out.');
+    }
+  });
 }

@@ -63,24 +63,50 @@ db.exec(`
     name TEXT NOT NULL,
     specialty TEXT NOT NULL,
     department TEXT NOT NULL,
+    phone TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS followups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_phone TEXT NOT NULL,
+    patient_name TEXT NOT NULL,
+    message TEXT NOT NULL,
+    scheduled_date TEXT NOT NULL,
+    status TEXT DEFAULT 'Pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
 
+// Run dynamic schema migrations for existing SQLite databases
+try {
+  db.exec('ALTER TABLE patients ADD COLUMN language TEXT;');
+  logger.info('Migration: successfully verified language column in patients table.');
+} catch (e) {
+  // Ignored if column already exists
+}
+
+try {
+  db.exec('ALTER TABLE doctors ADD COLUMN phone TEXT;');
+  logger.info('Migration: successfully verified phone column in doctors table.');
+} catch (e) {
+  // Ignored if column already exists
+}
+
 // Seed default doctors list if empty
 const countDocs = db.prepare("SELECT COUNT(*) as count FROM doctors").get().count;
 if (countDocs === 0) {
-  const seedStmt = db.prepare("INSERT INTO doctors (name, specialty, department) VALUES (?, ?, ?)");
+  const seedStmt = db.prepare("INSERT INTO doctors (name, specialty, department, phone) VALUES (?, ?, ?, ?)");
   const defaults = [
-    { name: 'Dr. Alok Sharma', specialty: 'MD - General Medicine', department: 'General Physician' },
-    { name: 'Dr. Sunita Verma', specialty: 'MD - Pediatrics', department: 'Pediatrician' },
-    { name: 'Dr. Vikas Gupta', specialty: 'DM - Cardiology', department: 'Cardiologist' },
-    { name: 'Dr. Rajesh Iyer', specialty: 'MS - Orthopedics', department: 'Orthopedic' },
-    { name: 'Dr. Naseeb', specialty: 'MD - Neurology', department: 'Neurologist' },
-    { name: 'Dr. Shafiq', specialty: 'MD - Neurology', department: 'Neurologist' }
+    { name: 'Dr. Alok Sharma', specialty: 'MD - General Medicine', department: 'General Physician', phone: '' },
+    { name: 'Dr. Sunita Verma', specialty: 'MD - Pediatrics', department: 'Pediatrician', phone: '' },
+    { name: 'Dr. Vikas Gupta', specialty: 'DM - Cardiology', department: 'Cardiologist', phone: '' },
+    { name: 'Dr. Rajesh Iyer', specialty: 'MS - Orthopedics', department: 'Orthopedic', phone: '' },
+    { name: 'Dr. Naseeb', specialty: 'MD - Neurology', department: 'Neurologist', phone: '' },
+    { name: 'Dr. Shafiq', specialty: 'MD - Neurology', department: 'Neurologist', phone: '' }
   ];
   for (const d of defaults) {
-    seedStmt.run(d.name, d.specialty, d.department);
+    seedStmt.run(d.name, d.specialty, d.department, d.phone);
   }
   logger.info('Default doctors successfully seeded into SQLite.');
 }
@@ -257,9 +283,9 @@ function getDoctors() {
   return db.prepare('SELECT * FROM doctors ORDER BY name ASC').all();
 }
 
-function saveDoctor({ name, specialty, department }) {
-  const stmt = db.prepare('INSERT INTO doctors (name, specialty, department) VALUES (?, ?, ?)');
-  const info = stmt.run(name, specialty, department);
+function saveDoctor({ name, specialty, department, phone }) {
+  const stmt = db.prepare('INSERT INTO doctors (name, specialty, department, phone) VALUES (?, ?, ?, ?)');
+  const info = stmt.run(name, specialty, department, phone || '');
   const doc = db.prepare('SELECT * FROM doctors WHERE id = ?').get(info.lastInsertRowid);
   dbEvents.emit('change', { type: 'DOCTOR_ADDED', data: doc });
   return doc;
@@ -273,6 +299,53 @@ function deleteDoctor(id) {
     dbEvents.emit('change', { type: 'DOCTOR_DELETED', data: doc });
   }
   return doc;
+}
+
+/**
+ * Patient Language preference update
+ */
+function savePatientLanguage(phone, language) {
+  const selectStmt = db.prepare('SELECT * FROM patients WHERE phone = ?');
+  const existing = selectStmt.get(phone);
+  if (existing) {
+    db.prepare('UPDATE patients SET language = ? WHERE phone = ?').run(language, phone);
+  } else {
+    db.prepare('INSERT INTO patients (phone, language) VALUES (?, ?)').run(phone, language);
+  }
+}
+
+/**
+ * Follow-up Campaign queries
+ */
+function getFollowups() {
+  return db.prepare('SELECT * FROM followups ORDER BY scheduled_date DESC').all();
+}
+
+function getPendingFollowups() {
+  return db.prepare("SELECT * FROM followups WHERE date(scheduled_date) <= date('now', 'localtime') AND status = 'Pending'").all();
+}
+
+function saveFollowup({ patient_phone, patient_name, message, scheduled_date }) {
+  const stmt = db.prepare('INSERT INTO followups (patient_phone, patient_name, message, scheduled_date, status) VALUES (?, ?, ?, ?, ?)');
+  const info = stmt.run(patient_phone, patient_name, message, scheduled_date, 'Pending');
+  const newFollow = db.prepare('SELECT * FROM followups WHERE id = ?').get(info.lastInsertRowid);
+  dbEvents.emit('change', { type: 'FOLLOWUP_SCHEDULED', data: newFollow });
+  return newFollow;
+}
+
+function updateFollowupStatus(id, status) {
+  db.prepare('UPDATE followups SET status = ? WHERE id = ?').run(status, id);
+  const updated = db.prepare('SELECT * FROM followups WHERE id = ?').get(id);
+  dbEvents.emit('change', { type: 'FOLLOWUP_STATUS_UPDATED', data: updated });
+}
+
+function deleteFollowup(id) {
+  const item = db.prepare('SELECT * FROM followups WHERE id = ?').get(id);
+  db.prepare('DELETE FROM followups WHERE id = ?').run(id);
+  if (item) {
+    dbEvents.emit('change', { type: 'FOLLOWUP_DELETED', data: item });
+  }
+  return item;
 }
 
 module.exports = {
@@ -292,5 +365,11 @@ module.exports = {
   getChatHistory,
   getDoctors,
   saveDoctor,
-  deleteDoctor
+  deleteDoctor,
+  savePatientLanguage,
+  getFollowups,
+  getPendingFollowups,
+  saveFollowup,
+  updateFollowupStatus,
+  deleteFollowup
 };

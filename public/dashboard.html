@@ -52,9 +52,15 @@
         <button class="nav-item" data-tab="doctors">
           <i class="fa-solid fa-user-doctor"></i> Manage Doctors
         </button>
+        <button class="nav-item" data-tab="followups">
+          <i class="fa-solid fa-business-time"></i> Follow-ups
+        </button>
       </nav>
 
       <div class="sidebar-footer">
+        <button class="btn btn-secondary" id="logout-btn" style="width: 100%; font-size: 0.8rem; padding: 6px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: var(--text-muted); cursor: pointer; border-radius: 4px;">
+          <i class="fa-solid fa-right-from-bracket"></i> Log Out
+        </button>
         <p>© 2026 Vardan Hospital</p>
         <span>SQLite v1.0.0</span>
       </div>
@@ -316,6 +322,35 @@
             </div>
           </div>
 
+          <!-- Tab 7: Follow-up Campaigns -->
+          <div class="tab-content" id="tab-followups">
+            <div class="section-title-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+              <h2>Follow-up Campaigns</h2>
+              <button class="btn btn-primary" id="open-followup-modal-btn" style="background: var(--clr-indigo); border: none; color: #fff; padding: 6px 12px; font-size: 0.85rem; border-radius: 4px; cursor: pointer;">
+                <i class="fa-solid fa-clock"></i> Schedule Follow-up
+              </button>
+            </div>
+            
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Patient Name</th>
+                    <th>Patient Phone</th>
+                    <th>Message Details</th>
+                    <th>Scheduled Date</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="followups-table-body">
+                  <tr class="empty-row"><td colspan="7">No follow-ups scheduled.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
         </div>
 
       </div>
@@ -444,9 +479,53 @@
           <input type="text" id="doc-specialty" placeholder="e.g. MD - Neurology, DM - Cardiology" required autocomplete="off">
         </div>
 
+        <div class="form-group">
+          <label for="doc-phone">WhatsApp Number (For instant alerts)</label>
+          <input type="text" id="doc-phone" placeholder="e.g. 919876543210 (with country code)" autocomplete="off">
+        </div>
+
         <div class="modal-form-actions">
           <button type="button" class="btn btn-secondary" id="cancel-doctor-btn">Cancel</button>
           <button type="submit" class="btn btn-primary" style="background: var(--clr-indigo); border: none; color: #fff;">Save Doctor</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Schedule Follow-up Modal Overlay -->
+  <div class="booking-modal-overlay" id="followup-modal">
+    <div class="booking-modal-content" style="max-width: 440px;">
+      <header class="booking-modal-header">
+        <h3><i class="fa-solid fa-clock" style="color: var(--clr-indigo);"></i> Schedule Follow-up Campaign</h3>
+        <button class="booking-close-btn" id="close-followup-modal-btn">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </header>
+      
+      <form id="schedule-followup-form">
+        <div class="form-group">
+          <label for="follow-name">Patient Name *</label>
+          <input type="text" id="follow-name" placeholder="Patient's Full Name" required autocomplete="off">
+        </div>
+        
+        <div class="form-group">
+          <label for="follow-phone">Patient Phone *</label>
+          <input type="text" id="follow-phone" placeholder="e.g. 919876543210" required autocomplete="off">
+        </div>
+
+        <div class="form-group">
+          <label for="follow-message">Custom Alert Message *</label>
+          <textarea id="follow-message" placeholder="e.g., Aapka 5 din ka dawai course kal pura ho raha hai..." rows="3" required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="follow-date">Scheduled Date *</label>
+          <input type="date" id="follow-date" required>
+        </div>
+
+        <div class="modal-form-actions">
+          <button type="button" class="btn btn-secondary" id="cancel-followup-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background: var(--clr-indigo); border: none; color: #fff;">Schedule Alert</button>
         </div>
       </form>
     </div>

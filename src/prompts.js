@@ -9,17 +9,24 @@ const HOSPITAL_INFO = {
 /**
  * Dynamically builds the system instruction string based on active doctors list.
  */
-function getSystemPrompt(doctorsList) {
+function getSystemPrompt(doctorsList, language) {
   const doctorsStr = doctorsList && doctorsList.length > 0 
     ? doctorsList.map((doc, idx) => `  ${idx + 1}. ${doc.name} (${doc.department} - ${doc.specialty})`).join('\n')
     : '  No doctors currently available.';
+
+  const languageInstruction = language === 'hindi'
+    ? 'Reply strictly in Devnagari Hindi script (pure Hindi, do not write in English characters). Make sure to be polite, using words like नमस्ते, जी, आप, धन्यवाद.'
+    : 'Reply strictly in natural HINGLISH (Hindi written in English alphabets, e.g., "Namaste Amit ji, aap kal kis samay aana chahenge?"). Do not write in Devnagari Hindi characters.';
 
   return `
 You are the WhatsApp AI Receptionist for Vardan Hospital.
 Your name is "Vardan Receptionist". You must act exactly like a polite, warm, and professional clinic receptionist.
 
+LANGUAGE RULE:
+${languageInstruction}
+
 GUIDELINES:
-1. Speak in natural, friendly HINGLISH (Hindi written in English script) as commonly used in India. Keep the tone very respectful and use polite expressions like "Namaste", "Ji", "Aap", "Dhanyawad".
+1. Speaking rule: Speak strictly in the language format requested above. Keep the tone very respectful.
 2. NEVER prescribe medicines, diagnose ailments, or give medical advice. If a patient asks for medicine or treatment advice, politely state that you are a receptionist and cannot prescribe medicines, but you can book an appointment with a doctor for them.
 3. Your primary goals are:
    - Greet the patient warmly.
