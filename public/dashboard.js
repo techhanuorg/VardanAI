@@ -1078,6 +1078,47 @@ function setupFollowupModalListeners() {
       alert('Network error while scheduling follow-up.');
     }
   });
+
+  // Bulk Broadcast Promotion handler
+  const sendBroadcastBtn = document.getElementById('send-broadcast-btn');
+  const broadcastTextarea = document.getElementById('broadcast-message');
+  if (sendBroadcastBtn && broadcastTextarea) {
+    sendBroadcastBtn.addEventListener('click', async () => {
+      const message = broadcastTextarea.value.trim();
+      if (!message) {
+        alert('Please enter a message to broadcast.');
+        return;
+      }
+
+      if (!confirm(`Are you sure you want to broadcast this message to all registered patients in the database?`)) {
+        return;
+      }
+
+      sendBroadcastBtn.disabled = true;
+      sendBroadcastBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Dispatched...';
+
+      try {
+        const res = await fetch('/api/broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message })
+        }).then(r => r.json());
+
+        if (res.success) {
+          alert(`Broadcast successfully queued! Dispatching in the background to ${res.targetCount} patients.`);
+          broadcastTextarea.value = '';
+        } else {
+          alert('Error dispatching broadcast: ' + res.error);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Network error while dispatching broadcast.');
+      } finally {
+        sendBroadcastBtn.disabled = false;
+        sendBroadcastBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Broadcast Message';
+      }
+    });
+  }
 }
 
 /**

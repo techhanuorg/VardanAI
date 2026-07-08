@@ -349,6 +349,57 @@ app.delete('/api/followups/:id', (req, res) => {
 });
 
 /**
+ * API: Send Bulk Broadcast/Promotions to all registered patients
+ */
+app.post('/api/broadcast', async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, error: 'Message content is required.' });
+    }
+    
+    // Fetch all patients from SQLite
+    const patientsList = db.getPatients();
+    if (patientsList.length === 0) {
+      return res.json({ success: true, sentCount: 0, message: 'No registered patients to broadcast to.' });
+    }
+    
+    const botInstance = require('./bot');
+    const sock = botInstance.getSock();
+    if (!sock) {
+      return res.status(503).json({ success: false, error: 'WhatsApp is not connected.' });
+    }
+    
+    // Respond immediately so client is not kept waiting
+    res.json({ success: true, targetCount: patientsList.length });
+    
+    // Trigger message dispatch in the background with a 1.5-second anti-spam delay
+    (async () => {
+      logger.info(`Starting bulk broadcast dispatch of "${message.substring(0, 30)}..." to ${patientsList.length} patients.`);
+      let sentSuccess = 0;
+      for (const patient of patientsList) {
+        if (!patient.phone) continue;
+        try {
+          const jid = `${patient.phone.trim()}@s.whatsapp.net`;
+          await sock.sendMessage(jid, { text: message });
+          sentSuccess++;
+          
+          // 1.5-second delay to comply with WhatsApp spam restrictions
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        } catch (err) {
+          logger.error(`Failed to send broadcast to +${patient.phone}: ${err.message}`);
+        }
+      }
+      logger.info(`Broadcast campaign complete. Successfully dispatched to ${sentSuccess}/${patientsList.length} patients.`);
+    })();
+    
+  } catch (error) {
+    logger.error('Error initiating broadcast campaign:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * API: Get active chats threads summary
  */
 app.get('/api/chats', (req, res) => {

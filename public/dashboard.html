@@ -324,7 +324,23 @@
 
           <!-- Tab 7: Follow-up Campaigns -->
           <div class="tab-content" id="tab-followups">
-            <div class="section-title-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <!-- Bulk Promotions Broadcast Card -->
+            <div class="card" style="margin-bottom: 30px; background: rgba(99, 102, 241, 0.04); border: 1px solid rgba(99, 102, 241, 0.12); padding: 24px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
+              <h3 style="margin-bottom: 8px; font-size: 1.15rem; display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-bullhorn" style="color: var(--clr-indigo);"></i> Send Bulk Broadcast / Promotions
+              </h3>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.4;">
+                Type a message below to broadcast to all registered patients in the database directory. Messages are sent with an automatic anti-spam throttling delay to protect your WhatsApp account from restrictions.
+              </p>
+              <div style="display: flex; gap: 12px; align-items: stretch; flex-wrap: wrap;">
+                <textarea id="broadcast-message" placeholder="Type promotion messages, camp updates, greeting offers, or holiday announcements..." style="flex: 1; min-width: 280px; padding: 12px; background: rgba(15, 15, 25, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; color: #fff; font-family: inherit; font-size: 0.9rem; outline: none; transition: border-color 0.25s;" rows="2"></textarea>
+                <button class="btn btn-primary" id="send-broadcast-btn" style="background: var(--clr-indigo); border: none; color: #fff; padding: 0 24px; font-size: 0.9rem; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-weight: 600; min-height: 48px; transition: background 0.2s;">
+                  <i class="fa-solid fa-paper-plane"></i> Broadcast Message
+                </button>
+              </div>
+            </div>
+
+            <div class="section-title-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; margin-top: 30px;">
               <h2>Follow-up Campaigns</h2>
               <button class="btn btn-primary" id="open-followup-modal-btn" style="background: var(--clr-indigo); border: none; color: #fff; padding: 6px 12px; font-size: 0.85rem; border-radius: 4px; cursor: pointer;">
                 <i class="fa-solid fa-clock"></i> Schedule Follow-up
