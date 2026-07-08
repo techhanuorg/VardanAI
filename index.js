@@ -3,6 +3,8 @@ const { startBot } = require('./src/bot');
 const { logger } = require('./src/config');
 // Initialize database on boot
 require('./src/db');
+// Initialize Google Sheets Sync logger on boot
+require('./src/sheets');
 
 /**
  * Main application bootstrapper.
