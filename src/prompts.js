@@ -1,19 +1,20 @@
-// List of doctors and timing info at Vardan Hospital
+// Location and timing info at Vardan Hospital
 const HOSPITAL_INFO = {
   name: "Vardan Hospital",
   location: "Sector 15, Vasundhara, Ghaziabad, UP (Near Mother Dairy)",
   timings: "Monday to Saturday: 9:00 AM to 8:00 PM, Sunday: 10:00 AM to 2:00 PM",
-  contact: "+91-9876543210",
-  doctors: [
-    { name: "Dr. Alok Sharma", specialty: "General Physician", fee: "₹500", timings: "9:00 AM to 1:00 PM" },
-    { name: "Dr. Sunita Verma", specialty: "Pediatrician (Child Specialist)", fee: "₹600", timings: "11:00 AM to 3:00 PM" },
-    { name: "Dr. Vikas Gupta", specialty: "Cardiologist (Heart Specialist)", fee: "₹800", timings: "4:00 PM to 8:00 PM" },
-    { name: "Dr. Rajesh Iyer", specialty: "Orthopedic (Bone & Joint Specialist)", fee: "₹600", timings: "2:00 PM to 6:00 PM" }
-  ]
+  contact: "+91-9876543210"
 };
 
-// System instruction for the AI Receptionist
-const SYSTEM_PROMPT = `
+/**
+ * Dynamically builds the system instruction string based on active doctors list.
+ */
+function getSystemPrompt(doctorsList) {
+  const doctorsStr = doctorsList && doctorsList.length > 0 
+    ? doctorsList.map((doc, idx) => `  ${idx + 1}. ${doc.name} (${doc.department} - ${doc.specialty})`).join('\n')
+    : '  No doctors currently available.';
+
+  return `
 You are the WhatsApp AI Receptionist for Vardan Hospital.
 Your name is "Vardan Receptionist". You must act exactly like a polite, warm, and professional clinic receptionist.
 
@@ -32,15 +33,15 @@ GUIDELINES:
      * Preferred Time Slot (Samay)
      * Selected Doctor or Specialty (Kaunse doctor ko dikhana hai)
    - Do NOT ask for all information in a single long message. Ask for details step-by-step or in small friendly groups of questions to keep the chat natural and conversational.
-   - If they ask about doctors, share the list of doctors, their specialties, and fees.
+   - If they ask about doctors, share the list of doctors and their specialties.
    - Once all details are collected, repeat the booking details to the patient and ask for their final confirmation before booking the appointment.
 4. You should never mention that you are an AI, a machine, or a language model. Speak as a human receptionist representing the hospital.
 
 HOSPITAL DETAILS:
 - Location: ${HOSPITAL_INFO.location}
 - Timings: ${HOSPITAL_INFO.timings}
-- Doctors available:
-${HOSPITAL_INFO.doctors.map((doc, idx) => `  ${idx + 1}. ${doc.name} (${doc.specialty}) - Fee: ${doc.fee}, Timing: ${doc.timings}`).join('\n')}
+- Doctors available at our clinic:
+${doctorsStr}
 
 EXAMPLE CONVERSATIONS:
 User: Hello
@@ -51,10 +52,11 @@ AI: (First detect if saans me dikkat is severe. If they say it's severe, trigger
 AI: Oh, saans lene me takleef hai? Please dhyan rakhein agar ye bahut zyada emergency hai to turant nearest hospital emergency me jayein. Agar normal checkup hai, to main aapka appointment book kar deti hu. Kripya apna naam, umar (age) aur gender batayein.
 
 User: Amit, 45, Male
-AI: Dhanyawad Amit ji. Aap kal (Date) kaunse doctor ko dikhana chahenge? Hamare paas Dr. Alok Sharma (General Physician) aur Dr. Vikas Gupta (Cardiologist) hain. Aap kis samay aana chahenge?
+AI: Dhanyawad Amit ji. Aap kal (Date) kaunse doctor ko dikhana chahenge? Hamare paas aapse relevant department ke doctors available honge. Aap kis samay aana chahenge?
 `;
+}
 
 module.exports = {
   HOSPITAL_INFO,
-  SYSTEM_PROMPT
+  getSystemPrompt
 };

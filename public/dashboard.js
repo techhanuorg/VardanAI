@@ -4,7 +4,8 @@ let clinicData = {
   appointments: [],
   patients: [],
   critical: [],
-  chats: []
+  chats: [],
+  doctors: []
 };
 
 // Charts instances
@@ -48,6 +49,13 @@ const elements = {
   closeBookingModalBtn: document.getElementById('close-booking-modal-btn'),
   cancelBookingBtn: document.getElementById('cancel-booking-btn'),
   manualBookingForm: document.getElementById('manual-booking-form'),
+
+  doctorsTableBody: document.getElementById('doctors-table-body'),
+  doctorModal: document.getElementById('doctor-modal'),
+  addDoctorForm: document.getElementById('add-doctor-form'),
+  openDoctorModalBtn: document.getElementById('open-doctor-modal-btn'),
+  closeDoctorModalBtn: document.getElementById('close-doctor-modal-btn'),
+  cancelDoctorBtn: document.getElementById('cancel-doctor-btn'),
   
   pageTitle: document.getElementById('page-title'),
   refreshCacheBtn: document.getElementById('refresh-cache-btn'),
@@ -67,6 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTabListeners();
   setupSearchAndFilters();
   setupModalListeners();
+  setupDoctorModalListeners();
   setupSSE();
   reloadData();
   setupWhatsAppQrCheck();
@@ -192,6 +201,9 @@ function updateTabVisibility() {
     } else if (activeTab === 'chats') {
       elements.pageTitle.textContent = 'WhatsApp Chat Streams';
       elements.filterContainer.style.display = 'none';
+    } else if (activeTab === 'doctors') {
+      elements.pageTitle.textContent = 'Doctors Directory';
+      elements.filterContainer.style.display = 'none';
     }
   }
 
@@ -269,16 +281,59 @@ function setupModalListeners() {
 }
 
 /**
+ * Doctor Registration Modal listeners
+ */
+function setupDoctorModalListeners() {
+  elements.openDoctorModalBtn.addEventListener('click', () => {
+    elements.doctorModal.classList.add('open');
+  });
+
+  const closeDocModal = () => {
+    elements.doctorModal.classList.remove('open');
+    elements.addDoctorForm.reset();
+  };
+
+  elements.closeDoctorModalBtn.addEventListener('click', closeDocModal);
+  elements.cancelDoctorBtn.addEventListener('click', closeDocModal);
+  
+  elements.addDoctorForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('doc-name').value.trim();
+    const department = document.getElementById('doc-department').value.trim();
+    const specialty = document.getElementById('doc-specialty').value.trim();
+
+    try {
+      const res = await fetch('/api/doctors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, specialty, department })
+      }).then(r => r.json());
+
+      if (res.success) {
+        closeDocModal();
+        reloadData();
+      } else {
+        alert('Error adding doctor: ' + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error while saving doctor.');
+    }
+  });
+}
+
+/**
  * Data loader: queries SQLite endpoints and saves to local state
  */
 async function reloadData() {
   try {
-    const [statsRes, apptsRes, patientsRes, critRes, chatsRes] = await Promise.all([
+    const [statsRes, apptsRes, patientsRes, critRes, chatsRes, docsRes] = await Promise.all([
       fetch('/api/stats').then(r => r.json()),
       fetch('/api/appointments').then(r => r.json()),
       fetch('/api/patients').then(r => r.json()),
       fetch('/api/critical').then(r => r.json()),
-      fetch('/api/chats').then(r => r.json())
+      fetch('/api/chats').then(r => r.json()),
+      fetch('/api/doctors').then(r => r.json())
     ]);
 
     if (statsRes.success) clinicData.stats = statsRes.data;
@@ -286,6 +341,10 @@ async function reloadData() {
     if (patientsRes.success) clinicData.patients = patientsRes.data;
     if (critRes.success) clinicData.critical = critRes.data;
     if (chatsRes.success) clinicData.chats = chatsRes.data;
+    if (docsRes.success) {
+      clinicData.doctors = docsRes.data;
+      populateDoctorDropdowns();
+    }
 
     renderData();
     updateCharts();
@@ -321,6 +380,8 @@ function renderData() {
     renderCriticalTable();
   } else if (activeTab === 'chats') {
     renderChatsFeed();
+  } else if (activeTab === 'doctors') {
+    renderDoctorsTable();
   }
 }
 
@@ -699,12 +760,12 @@ function updateCharts() {
   });
 
   // 2. Doctor consultation share counts
-  const doctorMap = {
-    'Dr. Alok Sharma': 0,
-    'Dr. Sunita Verma': 0,
-    'Dr. Vikas Gupta': 0,
-    'Dr. Rajesh Iyer': 0
-  };
+  const doctorMap = {};
+  const departmentMap = {};
+  clinicData.doctors.forEach(doc => {
+    doctorMap[doc.name] = 0;
+    departmentMap[doc.name] = doc.department;
+  });
 
   clinicData.appointments.forEach(appt => {
     if (doctorMap[appt.doctor] !== undefined) {
@@ -714,13 +775,14 @@ function updateCharts() {
 
   const docNames = Object.keys(doctorMap);
   const docCounts = Object.values(doctorMap);
-  const colors = ['#06b6d4', '#6366f1', '#f59e0b', '#10b981'];
+  const palette = ['#06b6d4', '#6366f1', '#f59e0b', '#10b981', '#a855f7', '#ec4899', '#3b82f6'];
+  const colors = docNames.map((_, idx) => palette[idx % palette.length]);
 
   if (shareChart) shareChart.destroy();
   shareChart = new Chart(ctxShare.getContext('2d'), {
     type: 'doughnut',
     data: {
-      labels: ['Physician', 'Pediatrician', 'Cardiologist', 'Orthopedic'],
+      labels: docNames.map(name => `${name} (${departmentMap[name] || 'Clinic'})`),
       datasets: [{
         data: docCounts,
         backgroundColor: colors,
@@ -855,4 +917,88 @@ function setupWhatsAppQrCheck() {
   // Poll status every 3 seconds
   checkAuth();
   setInterval(checkAuth, 3000);
+}
+
+/**
+ * Dynamically populates all doctor-related filter and form dropdown select items
+ */
+function populateDoctorDropdowns() {
+  // 1. Populate sidebar filter Select
+  const currentFilterVal = elements.doctorFilterSelect.value;
+  elements.doctorFilterSelect.innerHTML = '<option value="all">All Doctors</option>';
+  clinicData.doctors.forEach(doc => {
+    const opt = document.createElement('option');
+    opt.value = doc.name;
+    opt.textContent = doc.name;
+    elements.doctorFilterSelect.appendChild(opt);
+  });
+  elements.doctorFilterSelect.value = currentFilterVal || 'all';
+
+  // 2. Populate manual booking Select
+  const bookSelect = document.getElementById('book-doctor');
+  bookSelect.innerHTML = '<option value="">Choose Doctor...</option>';
+  clinicData.doctors.forEach(doc => {
+    const opt = document.createElement('option');
+    opt.value = doc.name;
+    opt.textContent = `${doc.name} (${doc.department})`;
+    bookSelect.appendChild(opt);
+  });
+}
+
+/**
+ * Render Doctors Directory table
+ */
+function renderDoctorsTable() {
+  let filtered = [...clinicData.doctors];
+  if (searchQuery) {
+    filtered = filtered.filter(doc => 
+      doc.name.toLowerCase().includes(searchQuery) ||
+      doc.department.toLowerCase().includes(searchQuery) ||
+      doc.specialty.toLowerCase().includes(searchQuery)
+    );
+  }
+
+  if (filtered.length === 0) {
+    elements.doctorsTableBody.innerHTML = '<tr class="empty-row"><td colspan="6">No doctors found.</td></tr>';
+    return;
+  }
+
+  elements.doctorsTableBody.innerHTML = filtered.map(doc => {
+    const displayTime = formatTimestamp(doc.created_at);
+    return `
+      <tr>
+        <td>#${doc.id}</td>
+        <td style="font-weight:600;color:var(--clr-indigo)">${escapeHtml(doc.name)}</td>
+        <td><span class="badge badge-info">${escapeHtml(doc.department)}</span></td>
+        <td>${escapeHtml(doc.specialty)}</td>
+        <td>${displayTime}</td>
+        <td>
+          <button class="btn-sm" onclick="deleteDoctor(${doc.id})" style="background:var(--clr-rose);border:none;color:#fff;cursor:pointer;padding:4px 8px;border-radius:4px;">
+            <i class="fa-solid fa-trash-can"></i> Delete
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * API Call to delete a doctor from SQLite
+ */
+async function deleteDoctor(id) {
+  if (!confirm('Are you sure you want to delete this doctor?')) return;
+  try {
+    const res = await fetch(`/api/doctors/${id}`, {
+      method: 'DELETE'
+    }).then(r => r.json());
+
+    if (res.success) {
+      reloadData();
+    } else {
+      alert('Error deleting doctor: ' + res.error);
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Network error while deleting doctor.');
+  }
 }

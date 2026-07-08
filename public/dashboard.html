@@ -49,6 +49,9 @@
         <button class="nav-item" data-tab="chats">
           <i class="fa-solid fa-comments"></i> Patient Chats
         </button>
+        <button class="nav-item" data-tab="doctors">
+          <i class="fa-solid fa-user-doctor"></i> Manage Doctors
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -162,10 +165,6 @@
             </select>
             <select id="doctor-filter" class="filter-dropdown">
               <option value="all">All Doctors</option>
-              <option value="Dr. Alok Sharma">Dr. Alok Sharma</option>
-              <option value="Dr. Sunita Verma">Dr. Sunita Verma</option>
-              <option value="Dr. Vikas Gupta">Dr. Vikas Gupta</option>
-              <option value="Dr. Rajesh Iyer">Dr. Rajesh Iyer</option>
             </select>
           </div>
         </div>
@@ -289,6 +288,34 @@
             </div>
           </div>
 
+          <!-- Tab 6: Manage Doctors -->
+          <div class="tab-content" id="tab-doctors">
+            <div class="section-title-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+              <h2>Doctors Directory</h2>
+              <button class="btn btn-primary" id="open-doctor-modal-btn" style="background: var(--clr-indigo); border: none; color: #fff; padding: 6px 12px; font-size: 0.85rem; border-radius: 4px; cursor: pointer;">
+                <i class="fa-solid fa-user-plus"></i> Add New Doctor
+              </button>
+            </div>
+            
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Department</th>
+                    <th>Specialty</th>
+                    <th>Joined Date</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="doctors-table-body">
+                  <tr class="empty-row"><td colspan="6">Loading doctors directory...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
         </div>
 
       </div>
@@ -362,10 +389,7 @@
           <div class="form-group">
             <label for="book-doctor">Doctor Select *</label>
             <select id="book-doctor" required>
-              <option value="Dr. Alok Sharma">Dr. Alok Sharma (General Physician)</option>
-              <option value="Dr. Sunita Verma">Dr. Sunita Verma (Pediatrician)</option>
-              <option value="Dr. Vikas Gupta">Dr. Vikas Gupta (Cardiologist)</option>
-              <option value="Dr. Rajesh Iyer">Dr. Rajesh Iyer (Orthopedic)</option>
+              <option value="">Choose Doctor...</option>
             </select>
           </div>
         </div>
@@ -389,6 +413,40 @@
         <div class="modal-form-actions">
           <button type="button" class="btn btn-secondary" id="cancel-booking-btn">Cancel</button>
           <button type="submit" class="btn btn-primary" style="background: var(--clr-indigo); border: none; color: #fff;">Confirm Booking</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Doctor Modal Overlay -->
+  <div class="booking-modal-overlay" id="doctor-modal">
+    <div class="booking-modal-content" style="max-width: 440px;">
+      <header class="booking-modal-header">
+        <h3><i class="fa-solid fa-user-doctor" style="color: var(--clr-indigo);"></i> Add New Doctor</h3>
+        <button class="booking-close-btn" id="close-doctor-modal-btn">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </header>
+      
+      <form id="add-doctor-form">
+        <div class="form-group">
+          <label for="doc-name">Doctor Name *</label>
+          <input type="text" id="doc-name" placeholder="e.g. Dr. Naseeb" required autocomplete="off">
+        </div>
+        
+        <div class="form-group">
+          <label for="doc-department">Department / Specialty Group *</label>
+          <input type="text" id="doc-department" placeholder="e.g. Neurologist, Cardiologist" required autocomplete="off">
+        </div>
+
+        <div class="form-group">
+          <label for="doc-specialty">Detailed Degree / Specialty *</label>
+          <input type="text" id="doc-specialty" placeholder="e.g. MD - Neurology, DM - Cardiology" required autocomplete="off">
+        </div>
+
+        <div class="modal-form-actions">
+          <button type="button" class="btn btn-secondary" id="cancel-doctor-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background: var(--clr-indigo); border: none; color: #fff;">Save Doctor</button>
         </div>
       </form>
     </div>

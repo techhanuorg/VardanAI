@@ -57,7 +57,33 @@ db.exec(`
     status TEXT DEFAULT 'Active',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS doctors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    specialty TEXT NOT NULL,
+    department TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
+
+// Seed default doctors list if empty
+const countDocs = db.prepare("SELECT COUNT(*) as count FROM doctors").get().count;
+if (countDocs === 0) {
+  const seedStmt = db.prepare("INSERT INTO doctors (name, specialty, department) VALUES (?, ?, ?)");
+  const defaults = [
+    { name: 'Dr. Alok Sharma', specialty: 'MD - General Medicine', department: 'General Physician' },
+    { name: 'Dr. Sunita Verma', specialty: 'MD - Pediatrics', department: 'Pediatrician' },
+    { name: 'Dr. Vikas Gupta', specialty: 'DM - Cardiology', department: 'Cardiologist' },
+    { name: 'Dr. Rajesh Iyer', specialty: 'MS - Orthopedics', department: 'Orthopedic' },
+    { name: 'Dr. Naseeb', specialty: 'MD - Neurology', department: 'Neurologist' },
+    { name: 'Dr. Shafiq', specialty: 'MD - Neurology', department: 'Neurologist' }
+  ];
+  for (const d of defaults) {
+    seedStmt.run(d.name, d.specialty, d.department);
+  }
+  logger.info('Default doctors successfully seeded into SQLite.');
+}
 
 logger.info('Native SQLite Database and schemas initialized successfully.');
 
@@ -224,6 +250,31 @@ function getChatHistory(phone) {
   return db.prepare('SELECT * FROM messages WHERE phone = ? ORDER BY created_at ASC').all();
 }
 
+/**
+ * Doctors queries
+ */
+function getDoctors() {
+  return db.prepare('SELECT * FROM doctors ORDER BY name ASC').all();
+}
+
+function saveDoctor({ name, specialty, department }) {
+  const stmt = db.prepare('INSERT INTO doctors (name, specialty, department) VALUES (?, ?, ?)');
+  const info = stmt.run(name, specialty, department);
+  const doc = db.prepare('SELECT * FROM doctors WHERE id = ?').get(info.lastInsertRowid);
+  dbEvents.emit('change', { type: 'DOCTOR_ADDED', data: doc });
+  return doc;
+}
+
+function deleteDoctor(id) {
+  const doc = db.prepare('SELECT * FROM doctors WHERE id = ?').get(id);
+  const stmt = db.prepare('DELETE FROM doctors WHERE id = ?');
+  stmt.run(id);
+  if (doc) {
+    dbEvents.emit('change', { type: 'DOCTOR_DELETED', data: doc });
+  }
+  return doc;
+}
+
 module.exports = {
   db,
   dbEvents,
@@ -238,5 +289,8 @@ module.exports = {
   getMessages,
   getCriticalCases,
   getRecentChats,
-  getChatHistory
+  getChatHistory,
+  getDoctors,
+  saveDoctor,
+  deleteDoctor
 };

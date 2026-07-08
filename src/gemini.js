@@ -1,6 +1,7 @@
 const { GoogleGenAI } = require('@google/genai');
 const { GEMINI_API_KEY, logger } = require('./config');
-const { SYSTEM_PROMPT } = require('./prompts');
+const { getSystemPrompt } = require('./prompts');
+const db = require('./db');
 
 // Load and parse native Gemini API keys
 const apiKeys = GEMINI_API_KEY ? GEMINI_API_KEY.split(',').map(k => k.trim()) : [];
@@ -27,7 +28,7 @@ function getAIClient() {
 function rotateAPIKey() {
   if (apiKeys.length <= 1) return false;
   currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
-  logger.warn(`Native Gemini API key rotated. New index: ${currentKeyIndex} (${apiKeys[currentKeyIndex].substring(0, 10)}...)`);
+  logger.warn('Native Gemini API key rotated.');
   return true;
 }
 
@@ -45,14 +46,14 @@ function getOpenRouterKey() {
 function rotateOpenRouterKey() {
   if (openRouterKeys.length <= 1) return false;
   currentOpenRouterIndex = (currentOpenRouterIndex + 1) % openRouterKeys.length;
-  logger.warn(`OpenRouter API key rotated. New index: ${currentOpenRouterIndex} (${openRouterKeys[currentOpenRouterIndex].substring(0, 10)}...)`);
+  logger.warn('OpenRouter API key rotated.');
   return true;
 }
 
 /**
  * Executes a fallback request to OpenRouter using OpenAI format compatibilities.
  */
-async function callOpenRouter(contents, tools) {
+async function callOpenRouter(contents, tools, systemInstruction) {
   const apiKey = getOpenRouterKey();
   if (!apiKey) {
     throw new Error('No OpenRouter API keys configured for failover fallback.');
@@ -60,7 +61,7 @@ async function callOpenRouter(contents, tools) {
 
   // Map Gemini contents format to OpenAI messages format
   const messages = [
-    { role: 'system', content: SYSTEM_PROMPT }
+    { role: 'system', content: systemInstruction }
   ];
   for (const turn of contents) {
     const role = turn.role === 'model' ? 'assistant' : 'user';
@@ -88,7 +89,7 @@ async function callOpenRouter(contents, tools) {
   }) : undefined;
 
   const requestBody = {
-    model: 'openrouter/free', // Automatically routes to the best currently active free model
+    model: 'openrouter/free', // Automatically routes to best available free model supporting tool calls
     messages,
     tools: openAITools
   };
@@ -140,38 +141,43 @@ async function callOpenRouter(contents, tools) {
   return result;
 }
 
-// Global functions list
-const functionDeclarations = [
-  {
-    name: 'updatePatientProfile',
-    description: 'Call this whenever the patient shares details about themselves (Name, Age, Gender, Problem, Preferred Doctor, Preferred Date or Time). Call this as soon as any information is extracted.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        name: { type: 'STRING', description: "Patient's full name" },
-        age: { type: 'STRING', description: "Patient's age (e.g. 25, 40)" },
-        gender: { type: 'STRING', description: "Patient's gender (Male, Female, Other)" },
-        problem: { type: 'STRING', description: "The medical problem, symptoms or reason for visit" },
-        doctor: { type: 'STRING', description: "Preferred doctor from hospital list, e.g. Dr. Alok Sharma, Dr. Sunita Verma, Dr. Vikas Gupta, Dr. Rajesh Iyer" },
-        preferredDate: { type: 'STRING', description: "Preferred appointment date (YYYY-MM-DD or tomorrow, next Monday)" },
-        preferredTime: { type: 'STRING', description: "Preferred appointment time slot (e.g. 10:00 AM, Evening)" }
-      }
-    }
-  },
-  {
-    name: 'bookAppointment',
-    description: 'Call this ONLY after all required details (name, age, gender, problem, doctor, date, time) have been collected, repeated back, and the patient has confirmed they want to proceed with the booking.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {}
-    }
-  }
-];
-
 /**
  * Sends a message to Gemini (or OpenRouter fallback) and handles function calling if requested.
  */
 async function generateReceptionistResponse(phone, userMessage, chatHistory, onProfileUpdate, onBookAppointment) {
+  // Fetch active doctors dynamically from database
+  const doctorsList = db.getDoctors();
+  const doctorsDescription = doctorsList.map(d => `${d.name} (${d.department})`).join(', ');
+  const systemInstruction = getSystemPrompt(doctorsList);
+
+  // Define tools dynamically using database doctors list
+  const functionDeclarations = [
+    {
+      name: 'updatePatientProfile',
+      description: 'Call this whenever the patient shares details about themselves (Name, Age, Gender, Problem, Preferred Doctor, Preferred Date or Time). Call this as soon as any information is extracted.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          name: { type: 'STRING', description: "Patient's full name" },
+          age: { type: 'STRING', description: "Patient's age (e.g. 25, 40)" },
+          gender: { type: 'STRING', description: "Patient's gender (Male, Female, Other)" },
+          problem: { type: 'STRING', description: "The medical problem, symptoms or reason for visit" },
+          doctor: { type: 'STRING', description: `Preferred doctor from hospital list. Available options: ${doctorsDescription}` },
+          preferredDate: { type: 'STRING', description: "Preferred appointment date (YYYY-MM-DD or tomorrow, next Monday)" },
+          preferredTime: { type: 'STRING', description: "Preferred appointment time slot (e.g. 10:00 AM, Evening)" }
+        }
+      }
+    },
+    {
+      name: 'bookAppointment',
+      description: 'Call this ONLY after all required details (name, age, gender, problem, doctor, date, time) have been collected, repeated back, and the patient has confirmed they want to proceed with the booking.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {}
+      }
+    }
+  ];
+
   const contents = [
     ...chatHistory,
     { role: 'user', parts: [{ text: userMessage }] }
@@ -202,7 +208,7 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, onP
               model: 'gemini-flash-latest',
               contents: contents,
               config: {
-                systemInstruction: SYSTEM_PROMPT,
+                systemInstruction: systemInstruction,
                 tools: [{ functionDeclarations }]
               }
             });
@@ -236,7 +242,7 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, onP
         let orRetries = 3;
         while (orRetries > 0) {
           try {
-            response = await callOpenRouter(contents, functionDeclarations);
+            response = await callOpenRouter(contents, functionDeclarations, systemInstruction);
             triedOpenRouter = true;
             break;
           } catch (orErr) {

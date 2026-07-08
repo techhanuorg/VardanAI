@@ -159,6 +159,50 @@ app.get('/api/critical', (req, res) => {
 });
 
 /**
+ * API: Get all active doctors
+ */
+app.get('/api/doctors', (req, res) => {
+  try {
+    const doctors = db.getDoctors();
+    res.json({ success: true, data: doctors });
+  } catch (error) {
+    logger.error('Error fetching doctors:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * API: Add a new doctor
+ */
+app.post('/api/doctors', (req, res) => {
+  try {
+    const { name, specialty, department } = req.body;
+    if (!name || !specialty || !department) {
+      return res.status(400).json({ success: false, error: 'Missing required doctor fields (name, specialty, department).' });
+    }
+    const doc = db.saveDoctor({ name, specialty, department });
+    res.json({ success: true, data: doc });
+  } catch (error) {
+    logger.error('Error adding doctor:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * API: Delete a doctor
+ */
+app.delete('/api/doctors/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const doc = db.deleteDoctor(Number(id));
+    res.json({ success: true, data: doc });
+  } catch (error) {
+    logger.error('Error deleting doctor:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * API: Manual appointment booking
  */
 app.post('/api/book', (req, res) => {
