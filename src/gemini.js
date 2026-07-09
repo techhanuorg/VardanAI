@@ -213,14 +213,6 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, lan
             break; // Success!
           } catch (err) {
             logger.warn(`Native Gemini API key at index ${currentKeyIndex} failed: ${err.message}`);
-            // If it's a quota limit error (429), bypass native retries and trigger OpenRouter instantly
-            const isQuotaError = err.status === 429 || 
-                                 (err.message && (err.message.includes('429') || err.message.includes('Quota exceeded') || err.message.includes('RESOURCE_EXHAUSTED')));
-            if (isQuotaError) {
-              logger.warn('Gemini free tier quota exhausted. Falling back to OpenRouter instantly.');
-              throw err;
-            }
-
             const rotated = rotateAPIKey();
             keyAttempts--;
             if (!rotated || keyAttempts === 0) {
