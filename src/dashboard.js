@@ -8,7 +8,15 @@ const app = express();
 app.use(express.json());
 app.use(cookieParser());
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Vardan@2026';
+let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!ADMIN_PASSWORD) {
+  const crypto = require('crypto');
+  ADMIN_PASSWORD = crypto.randomBytes(6).toString('hex');
+  logger.warn('================================================================');
+  logger.warn(` WARNING: ADMIN_PASSWORD environment variable is not defined.`);
+  logger.warn(` Login using dynamically generated temporary password: ${ADMIN_PASSWORD}`);
+  logger.warn('================================================================');
+}
 
 // Auth verification middleware
 function requireAuth(req, res, next) {
