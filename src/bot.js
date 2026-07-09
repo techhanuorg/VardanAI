@@ -323,17 +323,40 @@ async function startBot() {
           }
         } catch (innerErr) {
           logger.error(`Error processing message from [${phone}]: ${innerErr.message}`, innerErr);
+          if (!global.lastErrors) global.lastErrors = [];
+          global.lastErrors.push({
+            timestamp: new Date().toISOString(),
+            context: `inner message processing for phone ${phone}`,
+            message: innerErr.message,
+            stack: innerErr.stack
+          });
+          if (global.lastErrors.length > 50) global.lastErrors.shift();
+
           try {
             const fallbackText = "Namaste. Hospital server par temporary high traffic hai. Kripya ek baar fir se message likhein, ya direct call karein: +91-9876543210.";
             await sock.sendMessage(remoteJid, { text: fallbackText });
             db.saveOutgoingReply(messageId, fallbackText);
           } catch (sendErr) {
             logger.error('Failed to send fallback reply:', sendErr);
+            global.lastErrors.push({
+              timestamp: new Date().toISOString(),
+              context: `failed sending fallback for phone ${phone}`,
+              message: sendErr.message,
+              stack: sendErr.stack
+            });
           }
         }
       }
     } catch (err) {
       logger.error(err, 'Error processing messages.upsert event');
+      if (!global.lastErrors) global.lastErrors = [];
+      global.lastErrors.push({
+        timestamp: new Date().toISOString(),
+        context: 'outer messages.upsert loop',
+        message: err.message,
+        stack: err.stack
+      });
+      if (global.lastErrors.length > 50) global.lastErrors.shift();
     }
   });
 }

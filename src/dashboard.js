@@ -27,6 +27,7 @@ function requireAuth(req, res, next) {
     '/api/login',
     '/api/send-test',
     '/api/messages',
+    '/api/errors',
     '/favicon.ico'
   ];
   
@@ -80,6 +81,13 @@ app.post('/api/login', (req, res) => {
 app.post('/api/logout', (req, res) => {
   res.clearCookie('session_token');
   res.json({ success: true });
+});
+
+/**
+ * API: Fetch tracked runtime errors (for diagnostics)
+ */
+app.get('/api/errors', (req, res) => {
+  res.json({ success: true, errors: global.lastErrors || [] });
 });
 
 // List of connected SSE clients
