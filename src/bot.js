@@ -281,6 +281,27 @@ async function startBot() {
             return appt;
           };
 
+          const onScheduleFollowup = async (patientPhone, medicationDurationDays) => {
+            const patientName = session.profile.name || "Patient";
+            const daysToWait = Math.max(1, medicationDurationDays - 1); // e.g., 9 days for 10-day meds
+            
+            const scheduledDate = new Date();
+            scheduledDate.setDate(scheduledDate.getDate() + daysToWait);
+            const dateStr = scheduledDate.toISOString().split('T')[0]; // YYYY-MM-DD
+            
+            const followupMessage = `Namaste ${patientName} ji, aapki ${medicationDurationDays} din ki dawaiyo ki course kal poori ho rahi hai. Kripya naye stocks lene ke liye ya doctor se consult karne ke liye Vardan Hospital visit karein. Aap direct call bhi kar sakte hain: +91-9876543210. Dhanyawad!`;
+            
+            db.saveFollowup({
+              patient_phone: patientPhone,
+              patient_name: patientName,
+              message: followupMessage,
+              scheduled_date: dateStr
+            });
+            
+            logger.info(`Scheduled follow-up reminder for +${patientPhone} on ${dateStr} (in ${daysToWait} days)`);
+            return { success: true, date: dateStr };
+          };
+
           // Call Gemini (handles recursive tool calls under the hood)
           const replyText = await generateReceptionistResponse(
             phone,
@@ -288,7 +309,8 @@ async function startBot() {
             session.history,
             session.profile.language,
             onProfileUpdate,
-            onBookAppointment
+            onBookAppointment,
+            onScheduleFollowup
           );
 
           if (replyText.trim()) {

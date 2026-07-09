@@ -159,7 +159,7 @@ async function callOpenRouterSingleKey(apiKey, index, contents, tools, systemIns
 /**
  * Sends a message to Gemini (or OpenRouter fallback) and handles function calling if requested.
  */
-async function generateReceptionistResponse(phone, userMessage, chatHistory, language, onProfileUpdate, onBookAppointment) {
+async function generateReceptionistResponse(phone, userMessage, chatHistory, language, onProfileUpdate, onBookAppointment, onScheduleFollowup) {
   // Fetch active doctors dynamically from database
   const doctorsList = db.getDoctors();
   const doctorsDescription = doctorsList.map(d => `${d.name} (${d.department})`).join(', ');
@@ -189,6 +189,17 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, lan
       parameters: {
         type: 'OBJECT',
         properties: {}
+      }
+    },
+    {
+      name: 'scheduleFollowup',
+      description: 'Call this ONLY when the patient mentions they have been prescribed or are taking medication for a specific number of days, or they need a follow-up reminder. For example, if a patient says "Doctor ne 10 din ki dawa di hai" or similar.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          medicationDurationDays: { type: 'INTEGER', description: 'The number of days the medication lasts (e.g., 10, 7, 5, etc.)' }
+        },
+        required: ['medicationDurationDays']
       }
     }
   ];
@@ -265,6 +276,14 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, lan
               result = { success: true, message: 'Appointment booked successfully', details };
             } catch (err) {
               logger.error(`Error in bookAppointment tool: ${err.message}`);
+              result = { success: false, message: err.message };
+            }
+          } else if (call.name === 'scheduleFollowup') {
+            try {
+              const resultData = await onScheduleFollowup(phone, call.args.medicationDurationDays);
+              result = { success: true, message: 'Follow-up reminder successfully scheduled', details: resultData };
+            } catch (err) {
+              logger.error(`Error in scheduleFollowup tool: ${err.message}`);
               result = { success: false, message: err.message };
             }
           }
