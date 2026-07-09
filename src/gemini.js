@@ -19,6 +19,8 @@ function getAIClient() {
     throw new Error('No native Gemini API keys found in the environment configuration.');
   }
   const key = apiKeys[currentKeyIndex];
+  // Active round-robin: shift to the next key index on every call to distribute rate limits
+  currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
   return new GoogleGenAI({ apiKey: key });
 }
 
@@ -37,7 +39,10 @@ function rotateAPIKey() {
  */
 function getOpenRouterKey() {
   if (openRouterKeys.length === 0) return null;
-  return openRouterKeys[currentOpenRouterIndex];
+  const key = openRouterKeys[currentOpenRouterIndex];
+  // Active round-robin: shift to the next key index on every call to distribute rate limits
+  currentOpenRouterIndex = (currentOpenRouterIndex + 1) % openRouterKeys.length;
+  return key;
 }
 
 /**
@@ -89,7 +94,7 @@ async function callOpenRouter(contents, tools, systemInstruction) {
   }) : undefined;
 
   const requestBody = {
-    model: 'openai/gpt-oss-20b:free',
+    model: 'meta-llama/llama-3.3-70b-instruct:free',
     messages,
     tools: openAITools
   };
