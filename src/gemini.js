@@ -198,10 +198,8 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, lan
 
       try {
         // Try native Google GenAI client first
-        let retries = 3;
-        let delay = 1000; // 1s initial delay for transient errors
-        
-        while (retries > 0) {
+        let keyAttempts = apiKeys.length || 1;
+        while (keyAttempts > 0) {
           try {
             const aiClient = getAIClient();
             response = await aiClient.models.generateContent({
@@ -212,52 +210,42 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, lan
                 tools: [{ functionDeclarations }]
               }
             });
-            break;
+            break; // Success!
           } catch (err) {
-            // If it's a quota limit error (429), bypass retries and fallback to OpenRouter instantly
+            logger.warn(`Native Gemini API key at index ${currentKeyIndex} failed: ${err.message}`);
+            // If it's a quota limit error (429), bypass native retries and trigger OpenRouter instantly
             const isQuotaError = err.status === 429 || 
                                  (err.message && (err.message.includes('429') || err.message.includes('Quota exceeded') || err.message.includes('RESOURCE_EXHAUSTED')));
             if (isQuotaError) {
-              logger.warn('Gemini free tier quota exhausted. Falling back to OpenRouter instantly without retry delays.');
+              logger.warn('Gemini free tier quota exhausted. Falling back to OpenRouter instantly.');
               throw err;
             }
 
             const rotated = rotateAPIKey();
-            if (rotated) {
-              logger.info('Rotated Gemini API Key, retrying content generation immediately...');
-              continue;
+            keyAttempts--;
+            if (!rotated || keyAttempts === 0) {
+              throw err; // All native keys exhausted
             }
-            
-            retries--;
-            if (retries === 0) throw err;
-            logger.warn(`Gemini API error (remaining retries: ${retries}): ${err.message}. Retrying in ${delay}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            delay *= 2;
           }
         }
       } catch (geminiError) {
-        // If native keys fail, attempt OpenRouter failover
+        // If native keys fail, attempt OpenRouter failover instantly
         logger.error(`Native Gemini API failed: ${geminiError.message}. Attempting failover to OpenRouter...`);
         
-        let orRetries = 3;
-        while (orRetries > 0) {
+        let orAttempts = openRouterKeys.length || 1;
+        while (orAttempts > 0) {
           try {
             response = await callOpenRouter(contents, functionDeclarations, systemInstruction);
             triedOpenRouter = true;
-            break;
+            break; // Success!
           } catch (orErr) {
+            logger.warn(`OpenRouter API key at index ${currentOpenRouterIndex} failed: ${orErr.message}`);
             const rotated = rotateOpenRouterKey();
-            if (rotated) {
-              logger.info('Rotated OpenRouter API Key, retrying completion immediately...');
-              continue;
-            }
-            orRetries--;
-            if (orRetries === 0) {
+            orAttempts--;
+            if (!rotated || orAttempts === 0) {
               logger.error(`OpenRouter failover exhausted all attempts: ${orErr.message}`);
               throw new Error(`Both native Gemini and OpenRouter failed. Last error: ${orErr.message}`);
             }
-            logger.warn(`OpenRouter error, retrying in 3000ms...`);
-            await new Promise(resolve => setTimeout(resolve, 3000));
           }
         }
       }
