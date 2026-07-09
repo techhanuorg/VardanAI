@@ -440,7 +440,7 @@ app.get('/api/chats', (req, res) => {
  */
 app.get('/api/chats/:phone', (req, res) => {
   try {
-    const { phone } = req.params;
+    const phone = req.params.phone.replace(/\D/g, '');
     const history = db.getChatHistory(phone);
     
     // Split message/reply rows into individual timeline bubbles

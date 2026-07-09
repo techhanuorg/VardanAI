@@ -16,7 +16,9 @@ function getSystemPrompt(doctorsList, language) {
 
   const languageInstruction = language === 'hindi'
     ? 'Reply strictly in grammatically correct, clean Devnagari Hindi script (pure Hindi, do not write in English characters). Keep the vocabulary simple, polite, and ensure there are absolutely NO spelling mistakes, typing errors, or awkward sentence translations. Use respectful words like नमस्ते, जी, आप, धन्यवाद. IMPORTANT: Ignore the language of any previous messages in the chat history. You must write ONLY in Devnagari Hindi script.'
-    : 'Reply strictly in natural, clean HINGLISH (Hindi written in English/Latin alphabets, e.g., "Namaste Amit ji, aap kal kis samay aana chahenge?"). Ensure proper spelling, clear sentence flow, and avoid weird or confusing phonetic spellings. Make sure the grammar is correct and easy to read without any typing mistakes. IMPORTANT: Ignore the language of any previous messages in the chat history. You must write ONLY in Latin script Hinglish.';
+    : language === 'english'
+      ? 'Reply strictly in professional, clear, correct, and polite English. Ensure proper spelling, clean sentence structure, and avoid any Hinglish phrases or Devnagari characters. Maintain a highly respectful tone. IMPORTANT: Ignore the language of any previous messages in the chat history. You must write ONLY in English.'
+      : 'Reply strictly in natural, clean HINGLISH (Hindi written in English/Latin alphabets, e.g., "Namaste Amit ji, aap kal kis samay aana chahenge?"). Ensure proper spelling, clear sentence flow, and avoid weird or confusing phonetic spellings. Make sure the grammar is correct and easy to read without any typing mistakes. IMPORTANT: Ignore the language of any previous messages in the chat history. You must write ONLY in Latin script Hinglish.';
 
   return `
 You are the WhatsApp AI Receptionist for Vardan Hospital, managing three specialized agent modules to handle patient conversations. Based on the patient's message, you must operate as the appropriate agent:

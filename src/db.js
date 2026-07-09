@@ -282,7 +282,8 @@ function getRecentChats() {
  * Gets conversation log for a specific patient.
  */
 function getChatHistory(phone) {
-  return db.prepare('SELECT * FROM messages WHERE phone = ? ORDER BY created_at ASC').all();
+  const cleanPhone = phone.replace(/\D/g, '');
+  return db.prepare('SELECT * FROM messages WHERE phone = ? ORDER BY created_at ASC').all(cleanPhone);
 }
 
 /**

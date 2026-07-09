@@ -112,6 +112,19 @@ async function startBot() {
           continue;
         }
 
+        // 3.5. Check for Reset/Change Language Commands
+        const checkText = text.trim().toLowerCase();
+        const changeLanguageKeywords = ['change language', 'change bhasha', 'bhasha badlein', 'language change', '/language', 'भाषा बदलें', 'bhasha badlo', 'change language please'];
+        if (changeLanguageKeywords.includes(checkText)) {
+          session.profile.language = null;
+          db.savePatientLanguage(phone, null);
+          
+          const menu = "Namaste! Welcome to Vardan Hospital. 😊\nकृपया बातचीत के लिए अपनी पसंदीदा भाषा चुनें / Please choose your preferred language:\n\n*1. Hinglish* (Hindi written in English Script)\n*2. Hindi* (हिंदी - देवनागरी लिपि)\n*3. English* (Pure English)\n\n👉 Reply with *1*, *2* or *3* to select.";
+          await sock.sendMessage(remoteJid, { text: menu });
+          db.saveOutgoingReply(messageId, menu);
+          continue;
+        }
+
         // 4. Intercept for Language Preference Selection if not set
         if (!session.profile.language) {
           const cleanText = text.trim();
@@ -133,8 +146,17 @@ async function startBot() {
             db.saveOutgoingReply(messageId, reply);
             addMessageToHistory(phone, 'model', reply);
             continue;
+          } else if (cleanText === '3' || cleanText.toLowerCase() === 'english') {
+            session.profile.language = 'english';
+            db.savePatientLanguage(phone, 'english');
+            
+            const reply = "Thank you! We will now communicate in English. 😊\n\nPlease share your name and the medical problem or symptoms you are experiencing.";
+            await sock.sendMessage(remoteJid, { text: reply });
+            db.saveOutgoingReply(messageId, reply);
+            addMessageToHistory(phone, 'model', reply);
+            continue;
           } else {
-            const menu = "Namaste! Welcome to Vardan Hospital. 😊\nकृपया बातचीत के लिए अपनी पसंदीदा भाषा चुनें / Please choose your preferred language:\n\n*1. Hinglish* (Hindi written in English Script)\n*2. Hindi* (हिंदी - देवनागरी लिपि)\n\n👉 Reply with *1* or *2* to select.";
+            const menu = "Namaste! Welcome to Vardan Hospital. 😊\nकृपया बातचीत के लिए अपनी पसंदीदा भाषा चुनें / Please choose your preferred language:\n\n*1. Hinglish* (Hindi written in English Script)\n*2. Hindi* (हिंदी - देवनागरी लिपि)\n*3. English* (Pure English)\n\n👉 Reply with *1*, *2* or *3* to select.";
             await sock.sendMessage(remoteJid, { text: menu });
             db.saveOutgoingReply(messageId, menu);
             continue;
