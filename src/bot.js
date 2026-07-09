@@ -33,7 +33,9 @@ async function startBot() {
     auth: state,
     printQRInTerminal: false, // We will print it ourselves with custom style
     defaultQueryTimeoutMs: 60000,
-    connectTimeoutMs: 60000
+    connectTimeoutMs: 60000,
+    syncFullHistory: false,
+    markOnlineOnConnect: true
   });
 
   // Track credentials updates
