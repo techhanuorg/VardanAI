@@ -62,7 +62,15 @@ async function startBot() {
           startBot();
         }, 5000);
       } else {
-        logger.error('WhatsApp Session Logged Out. Please delete auth/ folder and restart to scan new QR code.');
+        logger.warn('WhatsApp Session permanently logged out or credentials invalid. Wiping auth/ folder and restarting automatically...');
+        try {
+          fs.rmSync(path.join(__dirname, '../auth'), { recursive: true, force: true });
+        } catch (e) {
+          logger.error(`Failed to delete auth directory: ${e.message}`);
+        }
+        setTimeout(() => {
+          startBot();
+        }, 5000);
       }
     } else if (connection === 'open') {
       isConnected = true;
