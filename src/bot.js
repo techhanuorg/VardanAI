@@ -333,7 +333,7 @@ async function startBot() {
         }
       }
     } catch (err) {
-      logger.error('Error processing messages.upsert event:', err);
+      logger.error(err, 'Error processing messages.upsert event');
     }
   });
 }
