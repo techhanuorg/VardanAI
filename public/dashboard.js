@@ -86,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupModalListeners();
   setupDoctorModalListeners();
   setupFollowupModalListeners();
+  setupAutoFollowupListeners();
   setupLogoutListener();
   setupSSE();
   reloadData();
@@ -537,6 +538,9 @@ function renderAppointmentsTable() {
         <td>
           <button class="btn-sm" onclick="openChatLogs('${appt.phone}', '${escapeJs(appt.name)}')">
             <i class="fa-solid fa-comments"></i> Logs
+          </button>
+          <button class="btn-sm" onclick="openAutoFollowupModal('${appt.phone}', '${escapeJs(appt.name)}', '${escapeJs(appt.doctor)}', '${appt.date}')" style="background:var(--clr-indigo);border:none;color:#fff;margin-left:4px;">
+            <i class="fa-solid fa-clock-rotate-left"></i> Follow-up
           </button>
         </td>
       </tr>
@@ -1199,6 +1203,106 @@ function setupLogoutListener() {
     } catch (err) {
       console.error(err);
       alert('Network error logging out.');
+    }
+  });
+}
+
+/**
+ * Opens and initializes the auto-followup scheduling modal
+ */
+function openAutoFollowupModal(phone, name, doctor, apptDate) {
+  const modal = document.getElementById('auto-followup-modal');
+  if (!modal) return;
+
+  document.getElementById('auto-follow-phone').value = phone;
+  document.getElementById('auto-follow-name').value = name;
+  document.getElementById('auto-follow-doctor').value = doctor;
+  document.getElementById('auto-follow-appt-date').value = apptDate;
+
+  // Trigger dynamic preview calculation
+  updateAutoFollowupPreview();
+
+  modal.classList.add('open');
+}
+
+/**
+ * Updates the message text preview based on template and doctor details
+ */
+function updateAutoFollowupPreview() {
+  const name = document.getElementById('auto-follow-name').value;
+  const doctor = document.getElementById('auto-follow-doctor').value || 'Doctor';
+  const template = document.getElementById('auto-follow-template-select').value;
+  const days = document.getElementById('auto-follow-days').value;
+  
+  let msg = '';
+  if (template === 'neuro') {
+    msg = `Namaste ${name} ji, Dr. ${doctor} ke sath aapka Neuro checkup kal scheduled hai. Kripya apni dawa samay par lein aur dikhane aayein. - Vardan Hospital`;
+  } else if (template === 'pediatrics') {
+    msg = `Namaste ${name} ji, aapke bacche ki dawa kal puri ho rahi hai. Kal follow-up checkup ke liye Vardan Hospital me dikhane aayein. - Vardan Hospital`;
+  } else {
+    msg = `Namaste ${name} ji, aapka ${days} din ka dawa ka course kal pura ho raha hai. Kal aage dikhane ke liye Vardan Hospital me appointment book karein. - Vardan Hospital`;
+  }
+  
+  document.getElementById('auto-follow-message-preview').value = msg;
+}
+
+/**
+ * Sets up listeners for template selects, custom inputs, and submits
+ */
+function setupAutoFollowupListeners() {
+  const modal = document.getElementById('auto-followup-modal');
+  const closeBtn = document.getElementById('close-auto-followup-modal-btn');
+  const cancelBtn = document.getElementById('cancel-auto-followup-btn');
+  const form = document.getElementById('auto-followup-form');
+  const templateSelect = document.getElementById('auto-follow-template-select');
+  const daysSelect = document.getElementById('auto-follow-days');
+
+  if (!modal || !form) return;
+
+  // Close handlers
+  const closeModal = () => {
+    modal.classList.remove('open');
+    form.reset();
+  };
+  closeBtn.addEventListener('click', closeModal);
+  cancelBtn.addEventListener('click', closeModal);
+
+  // Dynamic preview change listeners
+  templateSelect.addEventListener('change', updateAutoFollowupPreview);
+  daysSelect.addEventListener('change', updateAutoFollowupPreview);
+
+  // Form submit handler
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const patient_phone = document.getElementById('auto-follow-phone').value;
+    const patient_name = document.getElementById('auto-follow-name').value;
+    const message = document.getElementById('auto-follow-message-preview').value;
+    const days = parseInt(daysSelect.value);
+    const apptDateStr = document.getElementById('auto-follow-appt-date').value;
+
+    // Calculate target date (Appointment Date + (days - 1) days)
+    const apptDate = new Date(apptDateStr);
+    const targetDate = new Date(apptDate);
+    targetDate.setDate(apptDate.getDate() + (days - 1));
+    const scheduled_date = targetDate.toISOString().split('T')[0];
+
+    try {
+      const res = await fetch('/api/followups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patient_phone, patient_name, message, scheduled_date })
+      }).then(r => r.json());
+
+      if (res.success) {
+        closeModal();
+        alert(`Auto Follow-up scheduled successfully for date: ${scheduled_date}`);
+        reloadData();
+      } else {
+        alert('Error scheduling follow-up: ' + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error while scheduling auto follow-up.');
     }
   });
 }
