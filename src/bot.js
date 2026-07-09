@@ -86,6 +86,7 @@ async function startBot() {
 
   // Incoming Messages Event Listener
   sock.ev.on('messages.upsert', async (m) => {
+    logger.info(`messages.upsert event: type=${m.type}, messages=${m.messages?.length || 0}`);
     try {
       if (m.type !== 'notify') return;
 
