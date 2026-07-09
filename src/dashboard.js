@@ -8,7 +8,7 @@ const app = express();
 app.use(express.json());
 app.use(cookieParser());
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'vardan123';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Vardan@2026';
 
 // Auth verification middleware
 function requireAuth(req, res, next) {

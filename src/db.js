@@ -15,6 +15,15 @@ if (!fs.existsSync(dbDir)) {
 // Initialize SQLite database natively using Node.js built-in engine
 const db = new DatabaseSync(dbPath);
 
+// Configure WAL mode and busy timeout for high concurrency
+try {
+  db.exec('PRAGMA journal_mode = WAL;');
+  db.exec('PRAGMA busy_timeout = 7000;');
+  logger.info('SQLite database: configured WAL mode and busy_timeout successfully.');
+} catch (pragmaErr) {
+  logger.warn(`Failed to configure SQLite pragmas: ${pragmaErr.message}`);
+}
+
 // Setup Event Emitter for real-time updates
 class DBEventEmitter extends EventEmitter {}
 const dbEvents = new DBEventEmitter();
