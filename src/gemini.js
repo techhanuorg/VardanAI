@@ -60,7 +60,7 @@ function rotateOpenRouterKey() {
  */
 async function callGeminiSingleKey(key, index, contents, functionDeclarations, systemInstruction) {
   const aiClient = new GoogleGenAI({ apiKey: key });
-  const response = await aiClient.models.generateContent({
+  const requestPromise = aiClient.models.generateContent({
     model: 'gemini-flash-latest',
     contents: contents,
     config: {
@@ -68,6 +68,13 @@ async function callGeminiSingleKey(key, index, contents, functionDeclarations, s
       tools: [{ functionDeclarations }]
     }
   });
+
+  // Race request against a 10-second timeout to prevent hangs
+  const response = await Promise.race([
+    requestPromise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Native Gemini Key Timeout')), 10000))
+  ]);
+
   return { response, keyIndex: index };
 }
 
@@ -105,21 +112,35 @@ async function callOpenRouterSingleKey(apiKey, index, contents, tools, systemIns
   }) : undefined;
 
   const requestBody = {
-    model: 'meta-llama/llama-3.3-70b-instruct:free',
+    model: 'google/gemini-2.5-flash:free',
     messages,
     tools: openAITools
   };
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://github.com/techhanuorg/VardanAI',
-      'X-Title': 'Vardan AI Receptionist',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(requestBody)
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  let response;
+  try {
+    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://github.com/techhanuorg/VardanAI',
+        'X-Title': 'Vardan AI Receptionist',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('OpenRouter API Key Timeout');
+    }
+    throw err;
+  }
 
   if (!response.ok) {
     const errText = await response.text();
