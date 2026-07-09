@@ -25,6 +25,7 @@ function requireAuth(req, res, next) {
     '/login.css',
     '/login.js',
     '/api/login',
+    '/api/send-test',
     '/favicon.ico'
   ];
   
