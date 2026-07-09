@@ -126,8 +126,9 @@ logger.info('Native SQLite Database and schemas initialized successfully.');
  * Inserts or updates a patient profile.
  */
 function savePatient({ phone, name, age, gender }) {
+  const cleanPhone = phone.replace(/\D/g, '');
   const selectStmt = db.prepare('SELECT * FROM patients WHERE phone = ?');
-  const existing = selectStmt.get(phone);
+  const existing = selectStmt.get(cleanPhone);
 
   let patientId;
   
@@ -139,14 +140,14 @@ function savePatient({ phone, name, age, gender }) {
           gender = COALESCE(?, gender)
       WHERE phone = ?
     `);
-    updateStmt.run(name || null, age || null, gender || null, phone);
+    updateStmt.run(name || null, age || null, gender || null, cleanPhone);
     patientId = existing.id;
   } else {
     const insertStmt = db.prepare(`
       INSERT INTO patients (phone, name, age, gender) 
       VALUES (?, ?, ?, ?)
     `);
-    const info = insertStmt.run(phone, name || '', age || '', gender || '');
+    const info = insertStmt.run(cleanPhone, name || '', age || '', gender || '');
     patientId = info.lastInsertRowid;
   }
 
@@ -315,12 +316,13 @@ function deleteDoctor(id) {
  * Patient Language preference update
  */
 function savePatientLanguage(phone, language) {
+  const cleanPhone = phone.replace(/\D/g, '');
   const selectStmt = db.prepare('SELECT * FROM patients WHERE phone = ?');
-  const existing = selectStmt.get(phone);
+  const existing = selectStmt.get(cleanPhone);
   if (existing) {
-    db.prepare('UPDATE patients SET language = ? WHERE phone = ?').run(language, phone);
+    db.prepare('UPDATE patients SET language = ? WHERE phone = ?').run(language, cleanPhone);
   } else {
-    db.prepare('INSERT INTO patients (phone, language) VALUES (?, ?)').run(phone, language);
+    db.prepare('INSERT INTO patients (phone, language) VALUES (?, ?)').run(cleanPhone, language);
   }
 }
 

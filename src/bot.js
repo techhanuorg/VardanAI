@@ -112,10 +112,18 @@ async function startBot() {
           continue;
         }
 
-        // 3.5. Check for Reset/Change Language Commands
+        // 3.5. Check for Reset/Change Language Commands (Supports phrase matches)
         const checkText = text.trim().toLowerCase();
-        const changeLanguageKeywords = ['change language', 'change bhasha', 'bhasha badlein', 'language change', '/language', 'भाषा बदलें', 'bhasha badlo', 'change language please'];
-        if (changeLanguageKeywords.includes(checkText)) {
+        const changeLanguageKeywords = [
+          'change language', 'change bhasha', 'bhasha badlein', 'language change', '/language', 
+          'भाषा बदलें', 'bhasha badlo', 'change language please', 'language badlo', 'bhasha change', 
+          'language change kro', 'भाषा बदल दो', 'change bhasha please', 'bhasha badalna hai', 'language reset'
+        ];
+        const matchesKeyword = changeLanguageKeywords.some(kw => checkText.includes(kw)) ||
+                              (checkText.includes('language') && (checkText.includes('change') || checkText.includes('reset') || checkText.includes('badle') || checkText.includes('badlo') || checkText.includes('select'))) ||
+                              (checkText.includes('bhasha') && (checkText.includes('change') || checkText.includes('badle') || checkText.includes('badlo') || checkText.includes('reset')));
+
+        if (matchesKeyword) {
           session.profile.language = null;
           db.savePatientLanguage(phone, null);
           
