@@ -72,8 +72,25 @@ function getOrCreateSession(phone) {
     const session = recoverSessionFromDB(phone);
     sessionMap.set(phone, session);
   }
-  return sessionMap.get(phone);
+  const session = sessionMap.get(phone);
+  session.lastActive = Date.now();
+  return session;
 }
+
+// Automatically prune inactive patient sessions from memory every 10 minutes to prevent leaks under load
+setInterval(() => {
+  const oneHourAgo = Date.now() - (60 * 60 * 1000);
+  let prunedCount = 0;
+  for (const [phone, session] of sessionMap.entries()) {
+    if (session.lastActive < oneHourAgo) {
+      sessionMap.delete(phone);
+      prunedCount++;
+    }
+  }
+  if (prunedCount > 0) {
+    logger.info(`Session Pruning: Cleared ${prunedCount} inactive patient sessions from memory.`);
+  }
+}, 600000);
 
 /**
  * Updates specific fields in the patient's profile.

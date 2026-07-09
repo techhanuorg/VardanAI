@@ -34,4 +34,9 @@ process.on('unhandledRejection', (reason, promise) => {
   logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
+// Global uncaught exception handler to prevent crashes in production
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception thrown:', error);
+});
+
 main();
