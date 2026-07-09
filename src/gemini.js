@@ -89,7 +89,7 @@ async function callOpenRouter(contents, tools, systemInstruction) {
   }) : undefined;
 
   const requestBody = {
-    model: 'google/gemini-2.5-flash:free',
+    model: 'openai/gpt-oss-20b:free',
     messages,
     tools: openAITools
   };
@@ -203,7 +203,7 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, lan
           try {
             const aiClient = getAIClient();
             response = await aiClient.models.generateContent({
-              model: 'gemini-2.5-flash',
+              model: 'gemini-flash-latest',
               contents: contents,
               config: {
                 systemInstruction: systemInstruction,
