@@ -56,14 +56,25 @@ function rotateOpenRouterKey() {
 }
 
 /**
- * Executes a fallback request to OpenRouter using OpenAI format compatibilities.
+ * Executes a single native Gemini request.
  */
-async function callOpenRouter(contents, tools, systemInstruction) {
-  const apiKey = getOpenRouterKey();
-  if (!apiKey) {
-    throw new Error('No OpenRouter API keys configured for failover fallback.');
-  }
+async function callGeminiSingleKey(key, index, contents, functionDeclarations, systemInstruction) {
+  const aiClient = new GoogleGenAI({ apiKey: key });
+  const response = await aiClient.models.generateContent({
+    model: 'gemini-flash-latest',
+    contents: contents,
+    config: {
+      systemInstruction: systemInstruction,
+      tools: [{ functionDeclarations }]
+    }
+  });
+  return { response, keyIndex: index };
+}
 
+/**
+ * Executes a single fallback request to OpenRouter using OpenAI format.
+ */
+async function callOpenRouterSingleKey(apiKey, index, contents, tools, systemInstruction) {
   // Map Gemini contents format to OpenAI messages format
   const messages = [
     { role: 'system', content: systemInstruction }
@@ -99,7 +110,6 @@ async function callOpenRouter(contents, tools, systemInstruction) {
     tools: openAITools
   };
 
-  logger.info(`Sending fallback completion request to OpenRouter using key index: ${currentOpenRouterIndex}`);
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -143,7 +153,7 @@ async function callOpenRouter(contents, tools, systemInstruction) {
     });
   }
 
-  return result;
+  return { response: result, keyIndex: index };
 }
 
 /**
@@ -202,48 +212,23 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, lan
       let triedOpenRouter = false;
 
       try {
-        // Try native Google GenAI client first
-        let keyAttempts = apiKeys.length || 1;
-        while (keyAttempts > 0) {
-          try {
-            const aiClient = getAIClient();
-            response = await aiClient.models.generateContent({
-              model: 'gemini-flash-latest',
-              contents: contents,
-              config: {
-                systemInstruction: systemInstruction,
-                tools: [{ functionDeclarations }]
-              }
-            });
-            break; // Success!
-          } catch (err) {
-            logger.warn(`Native Gemini API key at index ${currentKeyIndex} failed: ${err.message}`);
-            const rotated = rotateAPIKey();
-            keyAttempts--;
-            if (!rotated || keyAttempts === 0) {
-              throw err; // All native keys exhausted
-            }
-          }
-        }
+        // Try all native keys in parallel using Promise.any
+        const promises = apiKeys.map((key, idx) => callGeminiSingleKey(key, idx, contents, functionDeclarations, systemInstruction));
+        const raceResult = await Promise.any(promises);
+        response = raceResult.response;
+        logger.info(`Parallel Native Gemini call: Key index ${raceResult.keyIndex} won the race.`);
       } catch (geminiError) {
-        // If native keys fail, attempt OpenRouter failover instantly
-        logger.error(`Native Gemini API failed: ${geminiError.message}. Attempting failover to OpenRouter...`);
+        logger.error(`All native Gemini API keys failed: ${geminiError.message}. Attempting parallel failover to OpenRouter...`);
         
-        let orAttempts = openRouterKeys.length || 1;
-        while (orAttempts > 0) {
-          try {
-            response = await callOpenRouter(contents, functionDeclarations, systemInstruction);
-            triedOpenRouter = true;
-            break; // Success!
-          } catch (orErr) {
-            logger.warn(`OpenRouter API key at index ${currentOpenRouterIndex} failed: ${orErr.message}`);
-            const rotated = rotateOpenRouterKey();
-            orAttempts--;
-            if (!rotated || orAttempts === 0) {
-              logger.error(`OpenRouter failover exhausted all attempts: ${orErr.message}`);
-              throw new Error(`Both native Gemini and OpenRouter failed. Last error: ${orErr.message}`);
-            }
-          }
+        try {
+          // Try all OpenRouter keys in parallel using Promise.any
+          const orPromises = openRouterKeys.map((key, idx) => callOpenRouterSingleKey(key, idx, contents, functionDeclarations, systemInstruction));
+          const orRaceResult = await Promise.any(orPromises);
+          response = orRaceResult.response;
+          logger.info(`Parallel OpenRouter call: Key index ${orRaceResult.keyIndex} won the race.`);
+        } catch (orErr) {
+          logger.error(`All OpenRouter failover attempts failed: ${orErr.message}`);
+          throw new Error(`Both native Gemini and OpenRouter failed parallel races. Last error: ${orErr.message}`);
         }
       }
 

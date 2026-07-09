@@ -102,6 +102,75 @@ async function startBot() {
         // 2. Immediately log incoming message to SQLite messages table
         const messageId = db.saveIncomingMessage(phone, text);
 
+        // 2.5. Check if the message is from a registered doctor and matches a command
+        const cleanDoctorPhone = phone.replace(/\D/g, '');
+        const doctorRecord = db.db.prepare('SELECT * FROM doctors WHERE replace(phone, "+", "") = ?').get(cleanDoctorPhone);
+        
+        if (doctorRecord) {
+          const commandText = text.trim().toLowerCase();
+          
+          if (commandText.startsWith('accept ') || commandText.startsWith('deny ') || commandText.startsWith('time ')) {
+            const parts = text.trim().split(/\s+/);
+            const cmd = parts[0].toLowerCase();
+            const apptId = parseInt(parts[1]);
+            
+            if (apptId) {
+              const appt = db.db.prepare('SELECT * FROM appointments WHERE id = ?').get(apptId);
+              if (appt) {
+                const patient = db.db.prepare('SELECT * FROM patients WHERE id = ?').get(appt.patient_id);
+                const patientJid = `${patient.phone}@s.whatsapp.net`;
+                
+                if (cmd === 'accept') {
+                  db.db.prepare("UPDATE appointments SET status = 'Confirmed' WHERE id = ?").run(apptId);
+                  
+                  const patientMsg = `Namaste ${patient.name} ji, aapka appointment Dr. ${doctorRecord.name} ke sath ${appt.date} ko ${appt.time} baje doctor dwara confirm kar diya gaya hai. Dhanyawad! - Vardan Hospital`;
+                  await sock.sendMessage(patientJid, { text: patientMsg });
+                  
+                  const docReply = `Appointment #${apptId} for ${patient.name} has been Confirmed successfully. Patient has been notified.`;
+                  await sock.sendMessage(remoteJid, { text: docReply });
+                  db.saveOutgoingReply(messageId, docReply);
+                  
+                  const updatedAppt = db.db.prepare('SELECT * FROM appointments WHERE id = ?').get(apptId);
+                  db.dbEvents.emit('change', { type: 'APPOINTMENT_BOOKED', data: updatedAppt });
+                  
+                } else if (cmd === 'deny') {
+                  db.db.prepare("UPDATE appointments SET status = 'Denied' WHERE id = ?").run(apptId);
+                  
+                  const docReply = `Appointment #${apptId} has been Denied. Kripya alternative time batayein.\nFormat: "TIME ${apptId} [New Time]"\nExample: "TIME ${apptId} 4:00 PM"`;
+                  await sock.sendMessage(remoteJid, { text: docReply });
+                  db.saveOutgoingReply(messageId, docReply);
+                  
+                } else if (cmd === 'time') {
+                  const newTime = parts.slice(2).join(' ');
+                  if (newTime) {
+                    db.db.prepare("UPDATE appointments SET status = 'Confirmed', time = ? WHERE id = ?").run(newTime, apptId);
+                    
+                    const patientMsg = `Namaste ${patient.name} ji, aapka appointment timing update kiya gaya hai. Dr. ${doctorRecord.name} ke sath naya samay ${newTime} confirm ho gaya hai. Dhanyawad! - Vardan Hospital`;
+                    await sock.sendMessage(patientJid, { text: patientMsg });
+                    
+                    const docReply = `Appointment #${apptId} has been updated to ${newTime} and Confirmed successfully. Patient has been notified.`;
+                    await sock.sendMessage(remoteJid, { text: docReply });
+                    db.saveOutgoingReply(messageId, docReply);
+                    
+                    const updatedAppt = db.db.prepare('SELECT * FROM appointments WHERE id = ?').get(apptId);
+                    db.dbEvents.emit('change', { type: 'APPOINTMENT_BOOKED', data: updatedAppt });
+                  } else {
+                    const docReply = `Error: Kripya new time provide karein. Format: "TIME ${apptId} [New Time]"`;
+                    await sock.sendMessage(remoteJid, { text: docReply });
+                    db.saveOutgoingReply(messageId, docReply);
+                  }
+                }
+                continue;
+              } else {
+                const docReply = `Error: Appointment ID ${apptId} nahi mila.`;
+                await sock.sendMessage(remoteJid, { text: docReply });
+                db.saveOutgoingReply(messageId, docReply);
+                continue;
+              }
+            }
+          }
+        }
+
         // 3. Check for Critical Symptoms
         const criticalSymptom = detectCriticalSymptom(text);
         if (criticalSymptom) {
