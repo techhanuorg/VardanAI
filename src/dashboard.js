@@ -157,6 +157,35 @@ app.get('/api/qr', (req, res) => {
 });
 
 /**
+ * API: Send a diagnostic test message to check outgoing connection
+ */
+app.post('/api/send-test', async (req, res) => {
+  try {
+    const { phone, text } = req.body;
+    if (!phone || !text) {
+      return res.status(400).json({ success: false, error: 'Phone and text are required in request body.' });
+    }
+    const bot = require('./bot');
+    const sock = bot.getSock ? bot.getSock() : null;
+    const isConnected = bot.getIsConnected ? bot.getIsConnected() : false;
+    
+    if (!sock || !isConnected) {
+      return res.status(500).json({ success: false, error: 'WhatsApp bot is not connected.' });
+    }
+    
+    const cleanPhone = phone.replace(/\D/g, '');
+    const jid = `${cleanPhone}@s.whatsapp.net`;
+    
+    await sock.sendMessage(jid, { text });
+    logger.info(`Diagnostic: Test message successfully sent to ${cleanPhone}`);
+    res.json({ success: true, message: `Diagnostic test message successfully sent to ${cleanPhone}` });
+  } catch (error) {
+    logger.error('Diagnostic error in /api/send-test:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * API: Get card stats
  */
 app.get('/api/stats', (req, res) => {
