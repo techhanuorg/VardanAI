@@ -8,15 +8,7 @@ const app = express();
 app.use(express.json());
 app.use(cookieParser());
 
-let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-if (!ADMIN_PASSWORD) {
-  const crypto = require('crypto');
-  ADMIN_PASSWORD = crypto.randomBytes(6).toString('hex');
-  logger.warn('================================================================');
-  logger.warn(` WARNING: ADMIN_PASSWORD environment variable is not defined.`);
-  logger.warn(` Login using dynamically generated temporary password: ${ADMIN_PASSWORD}`);
-  logger.warn('================================================================');
-}
+let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'vardan123';
 
 // Auth verification middleware
 function requireAuth(req, res, next) {
@@ -26,7 +18,6 @@ function requireAuth(req, res, next) {
     '/login.js',
     '/api/login',
     '/api/send-test',
-    '/api/messages',
     '/api/errors',
     '/favicon.ico'
   ];
@@ -104,344 +95,30 @@ app.get('/api/events', (req, res) => {
     'Access-Control-Allow-Origin': '*'
   });
 
-  // Send initial connection message
   res.write('data: {"type":"CONNECTED"}\n\n');
-
   sseClients.push(res);
-  logger.debug(`Dashboard client connected to SSE. Total clients: ${sseClients.length}`);
 
-  // Handle client disconnect
   req.on('close', () => {
     sseClients = sseClients.filter(client => client !== res);
-    logger.debug(`Dashboard client disconnected from SSE. Total clients: ${sseClients.length}`);
   });
 });
 
-/**
- * Broadcasts an event to all connected SSE clients.
- */
-function broadcast(event) {
-  const payload = `data: ${JSON.stringify(event)}\n\n`;
-  sseClients.forEach(client => {
-    try {
-      client.write(payload);
-    } catch (err) {
-      logger.error('Error sending event to SSE client:', err);
-    }
-  });
-}
-
-// Bind SQLite updates to our SSE broadcast
-db.dbEvents.on('change', (event) => {
-  broadcast(event);
-});
-
-// SSE Heartbeat to keep connections alive
-setInterval(() => {
-  sseClients.forEach(client => {
-    try {
-      client.write(':keepalive\n\n');
-    } catch (e) {
-      // ignore, closed clients handled by req.on('close')
-    }
-  });
-}, 25000);
-
-/**
- * API: Get current WhatsApp QR code connection status
- */
-app.get('/api/qr', (req, res) => {
-  try {
-    const bot = require('./bot');
-    const qr = bot.getCurrentQr ? bot.getCurrentQr() : null;
-    const isConnected = bot.getIsConnected ? bot.getIsConnected() : false;
-    res.json({
-      success: true,
-      qr,
-      isConnected
-    });
-  } catch (error) {
-    logger.error('Error fetching QR status:', error);
-    res.status(500).json({ success: false, error: error.message });
+// Broadcast database events to all open dashboard screens via SSE
+db.dbEvents.on('change', (payload) => {
+  const data = JSON.stringify(payload);
+  for (const client of sseClients) {
+    client.write(`data: ${data}\n\n`);
   }
 });
 
 /**
- * API: Send a diagnostic test message to check outgoing connection
- */
-app.post('/api/send-test', async (req, res) => {
-  try {
-    const { phone, text } = req.body;
-    if (!phone || !text) {
-      return res.status(400).json({ success: false, error: 'Phone and text are required in request body.' });
-    }
-    const bot = require('./bot');
-    const sock = bot.getSock ? bot.getSock() : null;
-    const isConnected = bot.getIsConnected ? bot.getIsConnected() : false;
-    
-    if (!sock || !isConnected) {
-      return res.status(500).json({ success: false, error: 'WhatsApp bot is not connected.' });
-    }
-    
-    const cleanPhone = phone.replace(/\D/g, '');
-    const jid = `${cleanPhone}@s.whatsapp.net`;
-    
-    await sock.sendMessage(jid, { text });
-    logger.info(`Diagnostic: Test message successfully sent to ${cleanPhone}`);
-    res.json({ success: true, message: `Diagnostic test message successfully sent to ${cleanPhone}` });
-  } catch (error) {
-    logger.error('Diagnostic error in /api/send-test:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * API: Get card stats
+ * API: Get basic aggregated counts
  */
 app.get('/api/stats', (req, res) => {
   try {
     const stats = db.getStats();
-    res.json({
-      success: true,
-      data: stats
-    });
+    res.json({ success: true, data: stats });
   } catch (error) {
-    logger.error('Error generating dashboard stats:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * API: Get all patients
- */
-app.get('/api/patients', (req, res) => {
-  try {
-    const patients = db.getPatients();
-    res.json({ success: true, data: patients });
-  } catch (error) {
-    logger.error('Error fetching patients:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * API: Get all appointments
- */
-app.get('/api/appointments', (req, res) => {
-  try {
-    const appointments = db.getAppointments();
-    res.json({ success: true, data: appointments });
-  } catch (error) {
-    logger.error('Error fetching appointments:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * API: Get all messages (logs)
- */
-app.get('/api/messages', (req, res) => {
-  try {
-    const messages = db.getMessages();
-    res.json({ success: true, data: messages });
-  } catch (error) {
-    logger.error('Error fetching messages:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * API: Get all critical cases
- */
-app.get('/api/critical', (req, res) => {
-  try {
-    const critical = db.getCriticalCases();
-    res.json({ success: true, data: critical });
-  } catch (error) {
-    logger.error('Error fetching critical cases:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * API: Get all active doctors
- */
-app.get('/api/doctors', (req, res) => {
-  try {
-    const doctors = db.getDoctors();
-    res.json({ success: true, data: doctors });
-  } catch (error) {
-    logger.error('Error fetching doctors:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * API: Add a new doctor
- */
-app.post('/api/doctors', (req, res) => {
-  try {
-    const { name, specialty, department, phone } = req.body;
-    if (!name || !specialty || !department) {
-      return res.status(400).json({ success: false, error: 'Missing required doctor fields (name, specialty, department).' });
-    }
-    const doc = db.saveDoctor({ name, specialty, department, phone: phone || '' });
-    res.json({ success: true, data: doc });
-  } catch (error) {
-    logger.error('Error adding doctor:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * API: Delete a doctor
- */
-app.delete('/api/doctors/:id', (req, res) => {
-  try {
-    const { id } = req.params;
-    const doc = db.deleteDoctor(Number(id));
-    res.json({ success: true, data: doc });
-  } catch (error) {
-    logger.error('Error deleting doctor:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * API: Manual appointment booking
- */
-app.post('/api/book', async (req, res) => {
-  try {
-    const { name, phone, age, gender, doctor, date, time, problem } = req.body;
-    
-    if (!name || !phone || !doctor || !date || !time) {
-      return res.status(400).json({ success: false, error: 'Missing required booking fields (name, phone, doctor, date, time).' });
-    }
-
-    const appt = db.saveAppointment({
-      phone,
-      name,
-      age: age || '',
-      gender: gender || '',
-      doctor,
-      date,
-      time,
-      problem: problem || ''
-    });
-
-    // Notify the doctor via WhatsApp if their phone number is registered
-    try {
-      const docRecord = db.db.prepare('SELECT phone FROM doctors WHERE name = ?').get(doctor);
-      const botInstance = require('./bot');
-      const sock = botInstance.getSock();
-      if (sock && docRecord && docRecord.phone && docRecord.phone.trim()) {
-        const docJid = `${docRecord.phone.trim()}@s.whatsapp.net`;
-        const notificationMsg = `*Vardan Hospital Notification* 🏥\n\nHello Doctor, a new appointment has been booked manually from the dashboard:\n\n👤 *Patient:* ${name}\n📅 *Date:* ${date}\n⏰ *Time Slot:* ${time}\n❓ *Problem:* ${problem || 'N/A'}\n📱 *Patient Phone:* +${phone}`;
-        await sock.sendMessage(docJid, { text: notificationMsg });
-        logger.info(`Manually booked appointment notification sent to Doctor: ${doctor} (${docRecord.phone})`);
-      }
-    } catch (sendErr) {
-      logger.error(`Failed to send manual booking notification to doctor: ${sendErr.message}`);
-    }
-
-    res.json({ success: true, data: appt });
-  } catch (error) {
-    logger.error('Error booking manual appointment:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * API: Get all follow-ups
- */
-app.get('/api/followups', (req, res) => {
-  try {
-    const list = db.getFollowups();
-    res.json({ success: true, data: list });
-  } catch (error) {
-    logger.error('Error fetching follow-ups:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * API: Schedule a new follow-up
- */
-app.post('/api/followups', (req, res) => {
-  try {
-    const { patient_phone, patient_name, message, scheduled_date } = req.body;
-    if (!patient_phone || !patient_name || !message || !scheduled_date) {
-      return res.status(400).json({ success: false, error: 'Missing required follow-up fields (patient_phone, patient_name, message, scheduled_date).' });
-    }
-    const followup = db.saveFollowup({ patient_phone, patient_name, message, scheduled_date });
-    res.json({ success: true, data: followup });
-  } catch (error) {
-    logger.error('Error scheduling follow-up:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * API: Delete a scheduled follow-up
- */
-app.delete('/api/followups/:id', (req, res) => {
-  try {
-    const { id } = req.params;
-    const item = db.deleteFollowup(Number(id));
-    res.json({ success: true, data: item });
-  } catch (error) {
-    logger.error('Error deleting follow-up:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * API: Send Bulk Broadcast/Promotions to all registered patients
- */
-app.post('/api/broadcast', async (req, res) => {
-  try {
-    const { message } = req.body;
-    if (!message || !message.trim()) {
-      return res.status(400).json({ success: false, error: 'Message content is required.' });
-    }
-    
-    // Fetch all patients from SQLite
-    const patientsList = db.getPatients();
-    if (patientsList.length === 0) {
-      return res.json({ success: true, sentCount: 0, message: 'No registered patients to broadcast to.' });
-    }
-    
-    const botInstance = require('./bot');
-    const sock = botInstance.getSock();
-    if (!sock) {
-      return res.status(503).json({ success: false, error: 'WhatsApp is not connected.' });
-    }
-    
-    // Respond immediately so client is not kept waiting
-    res.json({ success: true, targetCount: patientsList.length });
-    
-    // Trigger message dispatch in the background with a 1.5-second anti-spam delay
-    (async () => {
-      logger.info(`Starting bulk broadcast dispatch of "${message.substring(0, 30)}..." to ${patientsList.length} patients.`);
-      let sentSuccess = 0;
-      for (const patient of patientsList) {
-        if (!patient.phone) continue;
-        try {
-          const jid = `${patient.phone.trim()}@s.whatsapp.net`;
-          await sock.sendMessage(jid, { text: message });
-          sentSuccess++;
-          
-          // 1.5-second delay to comply with WhatsApp spam restrictions
-          await new Promise(resolve => setTimeout(resolve, 1500));
-        } catch (err) {
-          logger.error(`Failed to send broadcast to +${patient.phone}: ${err.message}`);
-        }
-      }
-      logger.info(`Broadcast campaign complete. Successfully dispatched to ${sentSuccess}/${patientsList.length} patients.`);
-    })();
-    
-  } catch (error) {
-    logger.error('Error initiating broadcast campaign:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -482,7 +159,6 @@ app.get('/api/chats/:phone', (req, res) => {
     const phone = req.params.phone.replace(/\D/g, '');
     const history = db.getChatHistory(phone);
     
-    // Split message/reply rows into individual timeline bubbles
     const formattedLogs = [];
     for (const row of history) {
       if (row.message) {
@@ -509,6 +185,282 @@ app.get('/api/chats/:phone', (req, res) => {
 });
 
 /**
+ * API: Doctors CRUD
+ */
+app.get('/api/doctors', (req, res) => {
+  try {
+    const docs = db.getDoctors();
+    res.json({ success: true, data: docs });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/doctors', (req, res) => {
+  try {
+    const doc = db.saveDoctor(req.body);
+    res.json({ success: true, data: doc });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.put('/api/doctors/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, specialty, department, phone, weekly_schedule_json, active } = req.body;
+    db.db.prepare('UPDATE doctors SET name = ?, specialty = ?, department = ?, phone = ?, weekly_schedule_json = ?, active = ? WHERE id = ?')
+      .run(name, specialty, department, phone || '', weekly_schedule_json || '{}', active !== undefined ? active : 1, id);
+    
+    const updated = db.db.prepare('SELECT * FROM doctors WHERE id = ?').get(id);
+    db.dbEvents.emit('change', { type: 'DOCTOR_UPDATED', data: updated });
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/doctors/:id', (req, res) => {
+  try {
+    const doc = db.deleteDoctor(req.params.id);
+    res.json({ success: true, data: doc });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * API: Appointments CRUD
+ */
+app.get('/api/appointments', (req, res) => {
+  try {
+    const list = db.getAppointments();
+    res.json({ success: true, data: list });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/appointments', (req, res) => {
+  try {
+    const { phone, name, age, gender, doctor, date, time, problem, doctor_id, time_slot } = req.body;
+    
+    // Conflict Check: Query SQLite directly before manual booking
+    const conflict = db.db.prepare('SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND date = ? AND time_slot = ? AND status = \'Booked\'').get(doctor_id, date, time_slot).count;
+    if (conflict > 0) {
+      return res.status(400).json({ success: false, error: 'Conflict: This slot is already booked for this doctor.' });
+    }
+
+    const appt = db.saveAppointment({
+      phone,
+      name,
+      age,
+      gender,
+      doctor,
+      doctor_id,
+      date,
+      time,
+      time_slot,
+      problem
+    });
+    res.json({ success: true, data: appt });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.put('/api/appointments/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, date, time, time_slot } = req.body;
+    db.db.prepare('UPDATE appointments SET status = COALESCE(?, status), date = COALESCE(?, date), time = COALESCE(?, time), time_slot = COALESCE(?, time_slot) WHERE id = ?')
+      .run(status || null, date || null, time || null, time_slot || null, id);
+    
+    const updated = db.db.prepare('SELECT a.*, p.name, p.phone FROM appointments a JOIN patients p ON a.patient_id = p.id WHERE a.id = ?').get(id);
+    db.dbEvents.emit('change', { type: 'APPOINTMENT_UPDATED', data: updated });
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * API: RAG Knowledge Base CRUD
+ */
+app.get('/api/knowledge-base', (req, res) => {
+  try {
+    const kb = db.getKB();
+    res.json({ success: true, data: kb });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/knowledge-base', (req, res) => {
+  try {
+    const item = db.saveKB(req.body);
+    res.json({ success: true, data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/knowledge-base/:id', (req, res) => {
+  try {
+    db.deleteKB(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * API: Pending Queries Answers
+ */
+app.get('/api/pending-queries', (req, res) => {
+  try {
+    const list = db.getPendingQueries();
+    res.json({ success: true, data: list });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/pending-queries/:id/answer', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { answer, answered_by } = req.body;
+    const updated = db.answerPendingQuery(id, answer, answered_by || 'Staff');
+    
+    // Auto-promote answered query to KB as new category entry if requested
+    if (req.body.promoteToKB) {
+      db.saveKB({
+        category: 'general_faq',
+        question_variants: updated.question,
+        answer_hi: answer,
+        answer_en: answer,
+        answer_hinglish: answer
+      });
+    }
+
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * API: Get LLM Gateway Telemetry Health Monitor Status
+ */
+app.get('/api/monitoring/health', (req, res) => {
+  try {
+    const botInstance = require('./bot');
+    const gatewayInstance = require('./llm_gateway');
+    
+    const waConnected = botInstance.getIsConnected();
+    const qrCode = botInstance.getCurrentQr();
+    const keysStatus = gatewayInstance.getKeyStatus();
+    
+    const recentLogs = db.getLLMLogs(100);
+    let avgLatency = 0;
+    let successCount = 0;
+    if (recentLogs.length > 0) {
+      const sum = recentLogs.reduce((acc, log) => acc + log.latency_ms, 0);
+      avgLatency = Math.round(sum / recentLogs.length);
+      successCount = recentLogs.filter(log => log.success === 1).length;
+    }
+    
+    const successRate = recentLogs.length > 0 
+      ? Math.round((successCount / recentLogs.length) * 100)
+      : 100;
+      
+    res.json({
+      success: true,
+      data: {
+        whatsapp: {
+          connected: waConnected,
+          qr: qrCode
+        },
+        keys: keysStatus,
+        telemetry: {
+          avgLatencyMs: avgLatency,
+          successRatePercent: successRate,
+          totalLoggedCalls: recentLogs.length
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Health API error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * API: Diagnostic test trigger (Sends test WhatsApp text)
+ */
+app.post('/api/send-test', async (req, res) => {
+  try {
+    const { phone, text } = req.body;
+    if (!phone || !text) {
+      return res.status(400).json({ success: false, error: 'Phone and text fields are required.' });
+    }
+    const cleanPhone = phone.replace(/\D/g, '');
+    const botInstance = require('./bot');
+    const sock = botInstance.getSock();
+    
+    if (!sock) {
+      return res.status(503).json({ success: false, error: 'WhatsApp socket is not initialized.' });
+    }
+
+    const jid = `${cleanPhone}@s.whatsapp.net`;
+    await sock.sendMessage(jid, { text });
+    res.json({ success: true, message: `Diagnostic test message successfully sent to ${cleanPhone}` });
+  } catch (error) {
+    logger.error('Diagnostic test send error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * API: Patients List & Campaigns management
+ */
+app.get('/api/patients', (req, res) => {
+  try {
+    const list = db.getPatients();
+    res.json({ success: true, data: list });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/followups', (req, res) => {
+  try {
+    const list = db.getFollowups();
+    res.json({ success: true, data: list });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/followups', (req, res) => {
+  try {
+    const item = db.saveFollowup(req.body);
+    res.json({ success: true, data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/followups/:id', (req, res) => {
+  try {
+    const item = db.deleteFollowup(req.params.id);
+    res.json({ success: true, data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * Starts the express dashboard server.
  */
 function startDashboard() {
@@ -521,6 +473,5 @@ function startDashboard() {
 }
 
 module.exports = {
-  startDashboard,
-  broadcast
+  startDashboard
 };

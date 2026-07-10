@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vardan Hospital | AI Clinic Dashboard</title>
+  <title>Vardan Hospital | AI Clinic Control Center</title>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -55,6 +55,15 @@
         <button class="nav-item" data-tab="followups">
           <i class="fa-solid fa-business-time"></i> Follow-ups
         </button>
+        <button class="nav-item" data-tab="knowledge-base">
+          <i class="fa-solid fa-book-medical"></i> Knowledge Base
+        </button>
+        <button class="nav-item" data-tab="pending-queries">
+          <i class="fa-solid fa-question-circle"></i> Pending Queries
+        </button>
+        <button class="nav-item" data-tab="monitoring">
+          <i class="fa-solid fa-gauge-high"></i> System Monitor
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -76,6 +85,9 @@
           <p class="subtitle" id="current-time-display">Real-time status of Vardan Hospital Receptionist</p>
         </div>
         <div class="top-bar-actions">
+          <button class="btn btn-secondary" id="theme-toggle-btn">
+            <i class="fa-solid fa-sun"></i> Light Mode
+          </button>
           <button class="btn btn-primary" id="open-booking-modal-btn" style="background: var(--clr-indigo); border: none; color: #fff;">
             <i class="fa-solid fa-calendar-plus"></i> Book Manually
           </button>
@@ -87,7 +99,6 @@
 
       <!-- Stats Grid -->
       <section class="stats-grid">
-        <!-- Card 1 -->
         <div class="stat-card" id="card-patients">
           <div class="stat-icon bg-cyan">
             <i class="fa-solid fa-hospital-user"></i>
@@ -98,80 +109,73 @@
           </div>
         </div>
 
-        <!-- Card 2 -->
         <div class="stat-card" id="card-appointments">
           <div class="stat-icon bg-indigo">
             <i class="fa-solid fa-calendar-check"></i>
           </div>
           <div class="stat-info">
             <h3 class="stat-value" id="stat-appointments-today">0</h3>
-            <p class="stat-label">Today's Bookings</p>
+            <p class="stat-label">Appointments Today</p>
           </div>
         </div>
 
-        <!-- Card 3 -->
-        <div class="stat-card critical" id="card-critical">
+        <div class="stat-card" id="card-critical">
           <div class="stat-icon bg-rose">
             <i class="fa-solid fa-triangle-exclamation"></i>
+            <span class="alert-pulse" id="critical-alert-pulse"></span>
           </div>
           <div class="stat-info">
-            <h3 class="stat-value" id="stat-critical-cases">0</h3>
-            <p class="stat-label">Critical Alerts</p>
+            <h3 class="stat-value text-rose" id="stat-critical-cases">0</h3>
+            <p class="stat-label">Critical Alerts Active</p>
           </div>
-          <span class="alert-pulse" id="critical-alert-pulse"></span>
         </div>
 
-        <!-- Card 4 -->
         <div class="stat-card" id="card-chats">
           <div class="stat-icon bg-amber">
             <i class="fa-solid fa-comments"></i>
           </div>
           <div class="stat-info">
             <h3 class="stat-value" id="stat-active-chats">0</h3>
-            <p class="stat-label">Recent Chats</p>
+            <p class="stat-label">Active Chat Threads</p>
           </div>
         </div>
       </section>
 
-      <!-- Charts Section (Overview Tab Only) -->
-      <section class="charts-section-grid" id="overview-charts-grid">
-        <div class="chart-card glass-container">
-          <div class="chart-header-row">
-            <h3>Appointment Daily Timeline</h3>
-          </div>
-          <div class="chart-wrapper">
-            <canvas id="appointments-trend-chart"></canvas>
-          </div>
+      <!-- Search & Filters Row -->
+      <div class="search-filter-section glass-container">
+        <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="search-input" placeholder="Search patients by name, phone or symptoms..." autocomplete="off">
         </div>
-        <div class="chart-card glass-container pie-card">
-          <div class="chart-header-row">
-            <h3>Doctor Consultation Distribution</h3>
-          </div>
-          <div class="chart-wrapper">
-            <canvas id="doctor-share-chart"></canvas>
-          </div>
+        
+        <div class="filter-group" id="filter-container">
+          <select id="status-filter" class="filter-dropdown">
+            <option value="all">All Statuses</option>
+            <option value="booked">Booked</option>
+            <option value="active">Active Critical</option>
+          </select>
+          <select id="doctor-filter" class="filter-dropdown">
+            <option value="all">All Doctors</option>
+          </select>
         </div>
-      </section>
+      </div>
 
-      <!-- Dashboard Body -->
-      <div class="dashboard-body">
-
-        <!-- Controls Bar -->
-        <div class="controls-bar">
-          <div class="search-box">
-            <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" id="search-input" placeholder="Search by name, phone, symptom or doctor...">
+      <!-- Main Tables Grid & Charts View -->
+      <div class="main-body">
+        
+        <!-- Graph and Analytics view (Only visible on overview dashboard) -->
+        <div class="charts-grid" id="overview-charts-grid" style="margin-bottom: 30px;">
+          <div class="chart-card glass-container">
+            <h3><i class="fa-solid fa-chart-line"></i> Hourly Traffic Trend</h3>
+            <div class="chart-wrapper">
+              <canvas id="trendChart"></canvas>
+            </div>
           </div>
-          
-          <div class="filter-group" id="filter-container">
-            <select id="status-filter" class="filter-dropdown">
-              <option value="all">All Statuses</option>
-              <option value="booked">Booked</option>
-              <option value="active">Active Critical</option>
-            </select>
-            <select id="doctor-filter" class="filter-dropdown">
-              <option value="all">All Doctors</option>
-            </select>
+          <div class="chart-card glass-container">
+            <h3><i class="fa-solid fa-chart-pie"></i> Appointment Distribution</h3>
+            <div class="chart-wrapper">
+              <canvas id="shareChart"></canvas>
+            </div>
           </div>
         </div>
 
@@ -181,125 +185,67 @@
           <!-- Tab 1: Overview -->
           <div class="tab-content active" id="tab-overview">
             <div class="section-title-row">
-              <h2>Recent Appointments & Alerts</h2>
-              <span class="badge badge-info">Real-time Stream</span>
+              <h2>Recent Clinical Activity Log</h2>
+              <div class="title-badge" id="overview-badge">Live logs</div>
             </div>
             
             <div class="table-scroll">
               <table class="data-table">
                 <thead>
-                  <tr id="overview-headers">
-                    <th>Patient</th>
-                    <th>Contact</th>
-                    <th>Detail</th>
+                  <tr>
+                    <th>Type</th>
+                    <th>Patient Name</th>
+                    <th>Phone JID</th>
+                    <th>Detail / Symptom</th>
                     <th>Status</th>
-                    <th>Time</th>
-                    <th>Action</th>
+                    <th>Assigned Doctor</th>
+                    <th>Timestamp</th>
                   </tr>
                 </thead>
                 <tbody id="overview-table-body">
-                  <tr class="empty-row"><td colspan="6">Loading clinic data...</td></tr>
+                  <tr class="empty-row"><td colspan="7">No recent clinic activity found.</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
-          <!-- Tab 2: Appointments Details -->
+
+          <!-- Tab 2: Appointments -->
           <div class="tab-content" id="tab-appointments">
-            <div class="section-title-row" style="display: flex; justify-content: space-between; align-items: center;">
-              <h2>Appointment Booking Log</h2>
-              <button class="btn btn-secondary" id="export-appointments-csv-btn" style="padding: 6px 12px; font-size: 0.85rem;">
-                <i class="fa-solid fa-file-csv"></i> Export CSV
+            <div class="section-title-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <h2>Doctor Appointments Schedule</h2>
+              <button class="btn btn-primary" id="export-appointments-csv-btn" style="padding: 6px 12px; font-size: 0.85rem; border-radius: 4px;">
+                <i class="fa-solid fa-file-export"></i> Export CSV
               </button>
             </div>
-            <div class="table-scroll">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Patient</th>
-                    <th>Phone</th>
-                    <th>Gender & Age</th>
-                    <th>Problem</th>
-                    <th>Doctor Selected</th>
-                    <th>Date & Time</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody id="appointments-table-body">
-                  <tr class="empty-row"><td colspan="8">No appointments found.</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
- 
-          <!-- Tab 3: Patients Registry Details -->
-          <div class="tab-content" id="tab-patients">
-            <div class="section-title-row" style="display: flex; justify-content: space-between; align-items: center;">
-              <h2>Registered Patient Database</h2>
-              <button class="btn btn-secondary" id="export-patients-csv-btn" style="padding: 6px 12px; font-size: 0.85rem;">
-                <i class="fa-solid fa-file-csv"></i> Export CSV
-              </button>
-            </div>
+            
             <div class="table-scroll">
               <table class="data-table">
                 <thead>
                   <tr>
                     <th>ID</th>
                     <th>Patient Name</th>
-                    <th>Phone Number</th>
-                    <th>Age</th>
-                    <th>Gender</th>
-                    <th>Registered Date</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>>
-                <tbody id="patients-table-body">
-                  <tr class="empty-row"><td colspan="7">No registered patients.</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Tab 4: Critical alerts details -->
-          <div class="tab-content" id="tab-critical">
-            <div class="section-title-row">
-              <h2>Emergency Case Alerts</h2>
-            </div>
-            <div class="table-scroll">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Patient</th>
-                    <th>Phone</th>
-                    <th>Reported Symptoms</th>
+                    <th>Phone JID</th>
+                    <th>Scheduled Doctor</th>
+                    <th>Date</th>
+                    <th>Time Slot</th>
+                    <th>Symptoms</th>
                     <th>Status</th>
-                    <th>Alert Date</th>
                     <th>Action</th>
                   </tr>
                 </thead>
-                <tbody id="critical-table-body">
-                  <tr class="empty-row"><td colspan="6">No critical cases detected.</td></tr>
+                <tbody id="appointments-table-body">
+                  <tr class="empty-row"><td colspan="9">No appointments registered.</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
 
-          <!-- Tab 5: Recent Chats -->
-          <div class="tab-content" id="tab-chats">
-            <div class="section-title-row">
-              <h2>Recent WhatsApp Chats</h2>
-            </div>
-            <div class="chat-thread-list" id="chat-threads-container">
-              <p class="empty-text">No active conversations found.</p>
-            </div>
-          </div>
-
-          <!-- Tab 6: Manage Doctors -->
-          <div class="tab-content" id="tab-doctors">
-            <div class="section-title-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-              <h2>Doctors Directory</h2>
-              <button class="btn btn-primary" id="open-doctor-modal-btn" style="background: var(--clr-indigo); border: none; color: #fff; padding: 6px 12px; font-size: 0.85rem; border-radius: 4px; cursor: pointer;">
-                <i class="fa-solid fa-user-plus"></i> Add New Doctor
+          <!-- Tab 3: Patients -->
+          <div class="tab-content" id="tab-patients">
+            <div class="section-title-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <h2>Patient Medical Registry</h2>
+              <button class="btn btn-primary" id="export-patients-csv-btn" style="padding: 6px 12px; font-size: 0.85rem; border-radius: 4px;">
+                <i class="fa-solid fa-file-export"></i> Export CSV
               </button>
             </div>
             
@@ -308,15 +254,82 @@
                 <thead>
                   <tr>
                     <th>ID</th>
-                    <th>Name</th>
-                    <th>Department</th>
+                    <th>Patient Name</th>
+                    <th>Phone JID</th>
+                    <th>Age</th>
+                    <th>Gender</th>
+                    <th>Saved Language</th>
+                    <th>Registered Date</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="patients-table-body">
+                  <tr class="empty-row"><td colspan="8">No registered patients found.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tab 4: Critical Cases -->
+          <div class="tab-content" id="tab-critical">
+            <div class="section-title-row">
+              <h2>Emergency Critical Alerts</h2>
+            </div>
+            
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Phone Number</th>
+                    <th>Critical Symptoms</th>
+                    <th>Status</th>
+                    <th>Alert Date</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="critical-table-body">
+                  <tr class="empty-row"><td colspan="6">No critical alerts flagged.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tab 5: Chats Feed -->
+          <div class="tab-content" id="tab-chats">
+            <div class="section-title-row">
+              <h2>WhatsApp Patient Chat Threads</h2>
+            </div>
+            <div class="chats-feed-layout" id="chat-threads-container">
+              <!-- Dynamically populated threads -->
+            </div>
+          </div>
+
+          <!-- Tab 6: Manage Doctors -->
+          <div class="tab-content" id="tab-doctors">
+            <div class="section-title-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <h2>Registered Doctors & Departments</h2>
+              <button class="btn btn-primary" id="open-doctor-modal-btn" style="background: var(--clr-indigo); border: none; color: #fff; padding: 6px 12px; font-size: 0.85rem; border-radius: 4px;">
+                <i class="fa-solid fa-user-plus"></i> Add Doctor
+              </button>
+            </div>
+            
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Doctor Name</th>
                     <th>Specialty</th>
-                    <th>Joined Date</th>
+                    <th>Department</th>
+                    <th>Phone JID</th>
+                    <th>Weekly Schedule</th>
+                    <th>Status</th>
                     <th>Action</th>
                   </tr>
                 </thead>
                 <tbody id="doctors-table-body">
-                  <tr class="empty-row"><td colspan="6">Loading doctors directory...</td></tr>
+                  <tr class="empty-row"><td colspan="8">No doctors registered.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -367,6 +380,129 @@
             </div>
           </div>
 
+          <!-- Tab 8: RAG Knowledge Base Editor -->
+          <div class="tab-content" id="tab-knowledge-base">
+            <div class="section-title-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <h2>RAG Knowledge Base Editor</h2>
+              <button class="btn btn-primary" id="open-kb-modal-btn" style="background: var(--clr-indigo); border: none; color: #fff; padding: 6px 12px; font-size: 0.85rem; border-radius: 4px;">
+                <i class="fa-solid fa-folder-plus"></i> Add KB Fact
+              </button>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Question Variants (Keywords)</th>
+                    <th>Hindi Answer</th>
+                    <th>Hinglish Answer</th>
+                    <th>English Answer</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="kb-table-body">
+                  <tr class="empty-row"><td colspan="6">No knowledge base facts stored.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tab 9: Pending Queries (unanswerable fallback) -->
+          <div class="tab-content" id="tab-pending-queries">
+            <div class="section-title-row">
+              <h2>Pending Patient Queries (Unanswered)</h2>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Patient Name</th>
+                    <th>Patient Phone</th>
+                    <th>Question Asked</th>
+                    <th>Status</th>
+                    <th>Submitted Date</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="pending-queries-table-body">
+                  <tr class="empty-row"><td colspan="7">No pending unanswerable queries logged.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tab 10: System Telemetry Monitoring -->
+          <div class="tab-content" id="tab-monitoring">
+            <div class="section-title-row">
+              <h2>LLM Gateway Key Rotation Telemetry</h2>
+            </div>
+            
+            <div class="telemetry-summary-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px;">
+              <div class="stat-card" style="background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.1);">
+                <div class="stat-icon bg-indigo"><i class="fa-solid fa-clock"></i></div>
+                <div class="stat-info">
+                  <h3 class="stat-value" id="monitor-avg-latency">0ms</h3>
+                  <p class="stat-label">Avg Response Latency</p>
+                </div>
+              </div>
+              <div class="stat-card" style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.1);">
+                <div class="stat-icon bg-success"><i class="fa-solid fa-circle-check"></i></div>
+                <div class="stat-info">
+                  <h3 class="stat-value text-success" id="monitor-success-rate">100%</h3>
+                  <p class="stat-label">Gateway Success Rate</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Key status grids -->
+            <div class="gateway-keys-health-section" style="margin-bottom: 40px;">
+              <h3 style="margin-bottom: 20px;"><i class="fa-solid fa-key" style="color: var(--clr-indigo);"></i> API Key Pools Cooldown Status</h3>
+              
+              <div class="key-pool-block" style="margin-bottom: 24px;">
+                <h4 style="margin-bottom: 12px; color: var(--clr-cyan);">Gemini Native API Pool (8 Keys)</h4>
+                <div class="key-dots-grid" id="gemini-keys-grid" style="display: flex; gap: 12px; flex-wrap: wrap;">
+                  <!-- Gemini dots populated dynamically -->
+                </div>
+              </div>
+
+              <div class="key-pool-block" style="margin-bottom: 24px;">
+                <h4 style="margin-bottom: 12px; color: var(--clr-indigo);">Groq Parallel API Pool (8 Keys)</h4>
+                <div class="key-dots-grid" id="groq-keys-grid" style="display: flex; gap: 12px; flex-wrap: wrap;">
+                  <!-- Groq dots -->
+                </div>
+              </div>
+
+              <div class="key-pool-block">
+                <h4 style="margin-bottom: 12px; color: var(--clr-amber);">OpenRouter Failover API Pool (8 Keys)</h4>
+                <div class="key-dots-grid" id="openrouter-keys-grid" style="display: flex; gap: 12px; flex-wrap: wrap;">
+                  <!-- OpenRouter dots -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Recent Live Server Errors Log -->
+            <div class="server-errors-log-section">
+              <h3 style="margin-bottom: 16px; color: var(--clr-rose);"><i class="fa-solid fa-triangle-exclamation"></i> Live Server Errors Log</h3>
+              <div class="table-scroll">
+                <table class="data-table" style="font-size: 0.8rem;">
+                  <thead>
+                    <tr>
+                      <th style="width: 15%;">Timestamp</th>
+                      <th style="width: 25%;">Context</th>
+                      <th style="width: 30%;">Error Message</th>
+                      <th style="width: 30%;">Stack Trace Snippet</th>
+                    </tr>
+                  </thead>
+                  <tbody id="monitor-errors-table-body">
+                    <tr class="empty-row"><td colspan="4">No server errors logged. System status 100% operational.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+
         </div>
 
       </div>
@@ -388,7 +524,6 @@
         </button>
       </header>
       
-      <!-- Conversation Message Stream -->
       <div class="chat-history-stream" id="chat-stream-body">
         <!-- Messages loaded dynamically -->
       </div>
@@ -410,25 +545,25 @@
       </header>
       
       <form id="manual-booking-form">
-        <div class="form-row">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
           <div class="form-group">
             <label for="book-name">Patient Name *</label>
-            <input type="text" id="book-name" placeholder="Full Name" required autocomplete="off">
+            <input type="text" id="book-name" required autocomplete="off">
           </div>
           <div class="form-group">
-            <label for="book-phone">Phone Number *</label>
-            <input type="text" id="book-phone" placeholder="e.g. 919876543210" required autocomplete="off">
+            <label for="book-phone">Phone (with country code) *</label>
+            <input type="text" id="book-phone" placeholder="e.g. 919451183429" required autocomplete="off">
           </div>
         </div>
         
-        <div class="form-row">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
           <div class="form-group">
             <label for="book-age">Age *</label>
-            <input type="number" id="book-age" placeholder="Age" required autocomplete="off">
+            <input type="text" id="book-age" placeholder="e.g. 35" required autocomplete="off">
           </div>
           <div class="form-group">
             <label for="book-gender">Gender *</label>
-            <select id="book-gender" required>
+            <select id="book-gender" required style="width: 100%; padding: 10px; background: rgba(15,15,25,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #fff;">
               <option value="Male">Male</option>
               <option value="Female">Female</option>
               <option value="Other">Other</option>
@@ -436,16 +571,14 @@
           </div>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label for="book-doctor">Doctor Select *</label>
-            <select id="book-doctor" required>
-              <option value="">Choose Doctor...</option>
-            </select>
-          </div>
+        <div class="form-group">
+          <label for="book-doctor">Select Doctor *</label>
+          <select id="book-doctor" required style="width: 100%; padding: 10px; background: rgba(15,15,25,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #fff;">
+            <!-- Seeded doctors -->
+          </select>
         </div>
 
-        <div class="form-row">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
           <div class="form-group">
             <label for="book-date">Appointment Date *</label>
             <input type="date" id="book-date" required>
@@ -457,23 +590,23 @@
         </div>
 
         <div class="form-group">
-          <label for="book-problem">Medical Problem / Description</label>
-          <textarea id="book-problem" placeholder="Describe symptoms or reason for consulting..." rows="3"></textarea>
+          <label for="book-problem">Symptom / Problem *</label>
+          <input type="text" id="book-problem" placeholder="e.g. Cough and Fever" required autocomplete="off">
         </div>
 
         <div class="modal-form-actions">
           <button type="button" class="btn btn-secondary" id="cancel-booking-btn">Cancel</button>
-          <button type="submit" class="btn btn-primary" style="background: var(--clr-indigo); border: none; color: #fff;">Confirm Booking</button>
+          <button type="submit" class="btn btn-primary" style="background: var(--clr-indigo); border: none; color: #fff;">Book Slot</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- Add Doctor Modal Overlay -->
+  <!-- Manage Doctor Modal Overlay -->
   <div class="booking-modal-overlay" id="doctor-modal">
     <div class="booking-modal-content" style="max-width: 440px;">
       <header class="booking-modal-header">
-        <h3><i class="fa-solid fa-user-doctor" style="color: var(--clr-indigo);"></i> Add New Doctor</h3>
+        <h3><i class="fa-solid fa-user-doctor"></i> Add Registered Doctor</h3>
         <button class="booking-close-btn" id="close-doctor-modal-btn">
           <i class="fa-solid fa-xmark"></i>
         </button>
@@ -482,22 +615,27 @@
       <form id="add-doctor-form">
         <div class="form-group">
           <label for="doc-name">Doctor Name *</label>
-          <input type="text" id="doc-name" placeholder="e.g. Dr. Naseeb" required autocomplete="off">
+          <input type="text" id="doc-name" placeholder="e.g. Dr. Alok Sharma" required autocomplete="off">
         </div>
         
         <div class="form-group">
-          <label for="doc-department">Department / Specialty Group *</label>
-          <input type="text" id="doc-department" placeholder="e.g. Neurologist, Cardiologist" required autocomplete="off">
+          <label for="doc-specialty">Specialty *</label>
+          <input type="text" id="doc-specialty" placeholder="e.g. MD - General Physician" required autocomplete="off">
         </div>
 
         <div class="form-group">
-          <label for="doc-specialty">Detailed Degree / Specialty *</label>
-          <input type="text" id="doc-specialty" placeholder="e.g. MD - Neurology, DM - Cardiology" required autocomplete="off">
+          <label for="doc-dept">Department *</label>
+          <input type="text" id="doc-dept" placeholder="e.g. Cardiology" required autocomplete="off">
         </div>
 
         <div class="form-group">
-          <label for="doc-phone">WhatsApp Number (For instant alerts)</label>
-          <input type="text" id="doc-phone" placeholder="e.g. 919876543210 (with country code)" autocomplete="off">
+          <label for="doc-phone">Doctor Contact Phone (e.g. 919876543210) *</label>
+          <input type="text" id="doc-phone" placeholder="e.g. 919876543210" required autocomplete="off">
+        </div>
+
+        <div class="form-group">
+          <label for="doc-schedule">Weekly Schedule JSON *</label>
+          <textarea id="doc-schedule" rows="3" required style="width: 100%; padding: 10px; background: rgba(15,15,25,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #fff; font-family: inherit; font-size: 0.85rem; outline: none;">{"Monday":"9:00 AM - 2:00 PM","Wednesday":"9:00 AM - 2:00 PM","Friday":"9:00 AM - 2:00 PM"}</textarea>
         </div>
 
         <div class="modal-form-actions">
@@ -547,55 +685,81 @@
     </div>
   </div>
 
-  <!-- Auto Follow-up Modal Overlay -->
-  <div class="booking-modal-overlay" id="auto-followup-modal">
-    <div class="booking-modal-content" style="max-width: 440px;">
+  <!-- Knowledge Base Add/Edit Modal Overlay -->
+  <div class="booking-modal-overlay" id="kb-modal">
+    <div class="booking-modal-content" style="max-width: 480px;">
       <header class="booking-modal-header">
-        <h3><i class="fa-solid fa-clock-rotate-left" style="color: var(--clr-indigo);"></i> Schedule Auto Follow-up</h3>
-        <button class="booking-close-btn" id="close-auto-followup-modal-btn">
+        <h3 id="kb-modal-title"><i class="fa-solid fa-book-medical" style="color: var(--clr-indigo);"></i> Add KB Fact</h3>
+        <button class="booking-close-btn" id="close-kb-modal-btn">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </header>
       
-      <form id="auto-followup-form">
-        <input type="hidden" id="auto-follow-phone">
-        <input type="hidden" id="auto-follow-doctor">
-        <input type="hidden" id="auto-follow-appt-date">
-
+      <form id="add-kb-form">
+        <input type="hidden" id="kb-id">
         <div class="form-group">
-          <label for="auto-follow-name">Patient Name</label>
-          <input type="text" id="auto-follow-name" readonly style="background: rgba(0,0,0,0.15); color: var(--clr-muted);">
+          <label for="kb-category">Category *</label>
+          <input type="text" id="kb-category" placeholder="e.g., location, timings, fees, policies" required autocomplete="off">
+        </div>
+        
+        <div class="form-group">
+          <label for="kb-variants">Question Variants / Keywords (comma-separated) *</label>
+          <input type="text" id="kb-variants" placeholder="e.g., kaha hai, address, location, rasta" required autocomplete="off">
         </div>
 
         <div class="form-group">
-          <label for="auto-follow-template-select">Select Department Template *</label>
-          <select id="auto-follow-template-select" required style="width: 100%; padding: 10px; background: rgba(15,15,25,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #fff;">
-            <option value="general">General Team Template (Dawai Course alert)</option>
-            <option value="neuro">Neurology Template (Dr. Naseeb/Shafiq visit reminder)</option>
-            <option value="pediatrics">Pediatrics Template (Child checkup alert)</option>
-          </select>
+          <label for="kb-hi">Hindi Answer *</label>
+          <textarea id="kb-hi" placeholder="Devnagari script response..." rows="2" required></textarea>
         </div>
 
         <div class="form-group">
-          <label for="auto-follow-days">Medicine Course Duration (Days) *</label>
-          <select id="auto-follow-days" required style="width: 100%; padding: 10px; background: rgba(15,15,25,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #fff;">
-            <option value="5">5 Days Course (Alert on Day 4)</option>
-            <option value="3">3 Days Course (Alert on Day 2)</option>
-            <option value="7">7 Days Course (Alert on Day 6)</option>
-            <option value="10">10 Days Course (Alert on Day 9)</option>
-            <option value="15">15 Days Course (Alert on Day 14)</option>
-            <option value="30">30 Days Course (Alert on Day 29)</option>
-          </select>
+          <label for="kb-hinglish">Hinglish Answer *</label>
+          <textarea id="kb-hinglish" placeholder="Latin script Hinglish response..." rows="2" required></textarea>
         </div>
 
         <div class="form-group">
-          <label for="auto-follow-message-preview">Message Preview</label>
-          <textarea id="auto-follow-message-preview" rows="4" required style="width: 100%; padding: 10px; background: rgba(15,15,25,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #fff; font-family: inherit; font-size: 0.85rem; outline: none;"></textarea>
+          <label for="kb-en">English Answer *</label>
+          <textarea id="kb-en" placeholder="English response..." rows="2" required></textarea>
         </div>
 
         <div class="modal-form-actions">
-          <button type="button" class="btn btn-secondary" id="cancel-auto-followup-btn">Cancel</button>
-          <button type="submit" class="btn btn-primary" style="background: var(--clr-indigo); border: none; color: #fff;">Schedule Alert</button>
+          <button type="button" class="btn btn-secondary" id="cancel-kb-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background: var(--clr-indigo); border: none; color: #fff;">Save Fact</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Answer Pending Query Modal Overlay -->
+  <div class="booking-modal-overlay" id="pending-query-modal">
+    <div class="booking-modal-content" style="max-width: 440px;">
+      <header class="booking-modal-header">
+        <h3><i class="fa-solid fa-comment-dots" style="color: var(--clr-indigo);"></i> Answer Patient Query</h3>
+        <button class="booking-close-btn" id="close-pending-query-modal-btn">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </header>
+      
+      <form id="answer-pending-query-form">
+        <input type="hidden" id="pending-query-id">
+        <div class="form-group">
+          <label>Question Asked</label>
+          <textarea id="pending-query-text" readonly rows="2" style="background: rgba(0,0,0,0.15); color: var(--clr-muted); width: 100%; border: 1px solid rgba(255,255,255,0.05); padding: 8px; border-radius: 6px;"></textarea>
+        </div>
+        
+        <div class="form-group">
+          <label for="pending-query-answer">Submit Answer *</label>
+          <textarea id="pending-query-answer" placeholder="Type response message here..." rows="4" required></textarea>
+        </div>
+
+        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+          <input type="checkbox" id="pending-query-promote" checked style="width: auto;">
+          <label for="pending-query-promote" style="margin: 0; cursor: pointer; font-size: 0.85rem;">Auto-add to Knowledge Base (RAG)</label>
+        </div>
+
+        <div class="modal-form-actions">
+          <button type="button" class="btn btn-secondary" id="cancel-pending-query-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background: var(--clr-indigo); border: none; color: #fff;">Submit Response</button>
         </div>
       </form>
     </div>

@@ -343,14 +343,17 @@ function setupDoctorModalListeners() {
  */
 async function reloadData() {
   try {
-    const [statsRes, apptsRes, patientsRes, critRes, chatsRes, docsRes, followsRes] = await Promise.all([
+    const [statsRes, apptsRes, patientsRes, critRes, chatsRes, docsRes, followsRes, kbRes, pendingRes, monitorRes] = await Promise.all([
       fetch('/api/stats').then(r => r.json()),
       fetch('/api/appointments').then(r => r.json()),
       fetch('/api/patients').then(r => r.json()),
       fetch('/api/critical').then(r => r.json()),
       fetch('/api/chats').then(r => r.json()),
       fetch('/api/doctors').then(r => r.json()),
-      fetch('/api/followups').then(r => r.json())
+      fetch('/api/followups').then(r => r.json()),
+      fetch('/api/knowledge-base').then(r => r.json()),
+      fetch('/api/pending-queries').then(r => r.json()),
+      fetch('/api/monitoring/health').then(r => r.json())
     ]);
 
     if (statsRes.success) clinicData.stats = statsRes.data;
@@ -363,6 +366,9 @@ async function reloadData() {
       populateDoctorDropdowns();
     }
     if (followsRes.success) clinicData.followups = followsRes.data;
+    if (kbRes.success) clinicData.kb = kbRes.data;
+    if (pendingRes.success) clinicData.pendingQueries = pendingRes.data;
+    if (monitorRes.success) clinicData.monitoring = monitorRes.data;
 
     renderData();
     updateCharts();
@@ -402,6 +408,12 @@ function renderData() {
     renderDoctorsTable();
   } else if (activeTab === 'followups') {
     renderFollowupsTable();
+  } else if (activeTab === 'knowledge-base') {
+    renderKBTable();
+  } else if (activeTab === 'pending-queries') {
+    renderPendingQueriesTable();
+  } else if (activeTab === 'monitoring') {
+    renderMonitoringTab();
   }
 }
 
@@ -1305,4 +1317,292 @@ function setupAutoFollowupListeners() {
       alert('Network error while scheduling auto follow-up.');
     }
   });
+}
+
+// --- Theme Toggle Listener ---
+const themeToggleBtn = document.getElementById('theme-toggle-btn');
+if (themeToggleBtn) {
+  themeToggleBtn.addEventListener('click', () => {
+    document.body.classList.toggle('light-theme');
+    const isLight = document.body.classList.contains('light-theme');
+    themeToggleBtn.innerHTML = isLight 
+      ? '<i class="fa-solid fa-moon"></i> Dark Mode' 
+      : '<i class="fa-solid fa-sun"></i> Light Mode';
+  });
+}
+
+// --- RAG Knowledge Base CRUD ---
+const kbModal = document.getElementById('kb-modal');
+const openKbModalBtn = document.getElementById('open-kb-modal-btn');
+const closeKbModalBtn = document.getElementById('close-kb-modal-btn');
+const cancelKbBtn = document.getElementById('cancel-kb-btn');
+const addKbForm = document.getElementById('add-kb-form');
+
+if (openKbModalBtn) {
+  openKbModalBtn.addEventListener('click', () => {
+    document.getElementById('kb-id').value = '';
+    document.getElementById('kb-modal-title').innerHTML = '<i class="fa-solid fa-book-medical" style="color: var(--clr-indigo);"></i> Add KB Fact';
+    addKbForm.reset();
+    kbModal.classList.add('open');
+  });
+}
+
+const closeKbModal = () => {
+  kbModal.classList.remove('open');
+  addKbForm.reset();
+};
+if (closeKbModalBtn) closeKbModalBtn.addEventListener('click', closeKbModal);
+if (cancelKbBtn) cancelKbBtn.addEventListener('click', closeKbModal);
+
+if (addKbForm) {
+  addKbForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('kb-id').value;
+    const category = document.getElementById('kb-category').value;
+    const question_variants = document.getElementById('kb-variants').value;
+    const answer_hi = document.getElementById('kb-hi').value;
+    const answer_hinglish = document.getElementById('kb-hinglish').value;
+    const answer_en = document.getElementById('kb-en').value;
+
+    const payload = { category, question_variants, answer_hi, answer_hinglish, answer_en };
+    if (id) payload.id = id;
+
+    try {
+      const res = await fetch('/api/knowledge-base', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(r => r.json());
+
+      if (res.success) {
+        closeKbModal();
+        reloadData();
+      } else {
+        alert('Error saving fact: ' + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  });
+}
+
+function renderKBTable() {
+  const tableBody = document.getElementById('kb-table-body');
+  if (!tableBody) return;
+  const kbData = clinicData.kb || [];
+
+  if (kbData.length === 0) {
+    tableBody.innerHTML = '<tr class="empty-row"><td colspan="6">No knowledge base facts stored.</td></tr>';
+    return;
+  }
+
+  tableBody.innerHTML = kbData.map(item => `
+    <tr>
+      <td style="font-weight: 600; color: var(--clr-indigo);">${escapeHtml(item.category)}</td>
+      <td style="font-size: 0.85rem;">${escapeHtml(item.question_variants)}</td>
+      <td style="font-size: 0.85rem; max-width: 200px;">${escapeHtml(item.answer_hi)}</td>
+      <td style="font-size: 0.85rem; max-width: 200px;">${escapeHtml(item.answer_hinglish)}</td>
+      <td style="font-size: 0.85rem; max-width: 200px;">${escapeHtml(item.answer_en)}</td>
+      <td>
+        <button class="btn-sm" onclick="editKBEntry(${item.id})" style="background: var(--clr-indigo); border: none; color: #fff; cursor: pointer; padding: 4px 8px; border-radius: 4px; margin-right: 4px;">
+          <i class="fa-solid fa-pen-to-square"></i> Edit
+        </button>
+        <button class="btn-sm" onclick="deleteKBEntry(${item.id})" style="background: var(--clr-rose); border: none; color: #fff; cursor: pointer; padding: 4px 8px; border-radius: 4px;">
+          <i class="fa-solid fa-trash-can"></i> Delete
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+window.editKBEntry = function(id) {
+  const item = (clinicData.kb || []).find(x => x.id === id);
+  if (!item) return;
+
+  document.getElementById('kb-id').value = item.id;
+  document.getElementById('kb-category').value = item.category;
+  document.getElementById('kb-variants').value = item.question_variants;
+  document.getElementById('kb-hi').value = item.answer_hi;
+  document.getElementById('kb-hinglish').value = item.answer_hinglish;
+  document.getElementById('kb-en').value = item.answer_en;
+
+  document.getElementById('kb-modal-title').innerHTML = '<i class="fa-solid fa-book-medical" style="color: var(--clr-indigo);"></i> Edit KB Fact';
+  kbModal.classList.add('open');
+};
+
+window.deleteKBEntry = async function(id) {
+  if (!confirm('Are you sure you want to delete this RAG fact?')) return;
+  try {
+    const res = await fetch(`/api/knowledge-base/${id}`, { method: 'DELETE' }).then(r => r.json());
+    if (res.success) {
+      reloadData();
+    } else {
+      alert('Error: ' + res.error);
+    }
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+// --- Pending Queries answers handler ---
+const pqModal = document.getElementById('pending-query-modal');
+const closePqModalBtn = document.getElementById('close-pending-query-modal-btn');
+const cancelPqBtn = document.getElementById('cancel-pending-query-btn');
+const answerPqForm = document.getElementById('answer-pending-query-form');
+
+const closePqModal = () => {
+  pqModal.classList.remove('open');
+  answerPqForm.reset();
+};
+if (closePqModalBtn) closePqModalBtn.addEventListener('click', closePqModal);
+if (cancelPqBtn) cancelPqBtn.addEventListener('click', closePqModal);
+
+if (answerPqForm) {
+  answerPqForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('pending-query-id').value;
+    const answer = document.getElementById('pending-query-answer').value;
+    const promoteToKB = document.getElementById('pending-query-promote').checked;
+
+    try {
+      const res = await fetch(`/api/pending-queries/${id}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answer, promoteToKB })
+      }).then(r => r.json());
+
+      if (res.success) {
+        closePqModal();
+        reloadData();
+      } else {
+        alert('Error answering query: ' + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  });
+}
+
+function renderPendingQueriesTable() {
+  const tableBody = document.getElementById('pending-queries-table-body');
+  if (!tableBody) return;
+  const list = clinicData.pendingQueries || [];
+
+  if (list.length === 0) {
+    tableBody.innerHTML = '<tr class="empty-row"><td colspan="7">No pending queries logged. System fully answered!</td></tr>';
+    return;
+  }
+
+  tableBody.innerHTML = list.map(item => {
+    const isAnswered = item.status === 'answered';
+    const statusClass = isAnswered ? 'badge-success' : 'badge-warning';
+    const actionBtn = isAnswered 
+      ? `<span style="font-size:0.8rem;color:var(--clr-success);font-weight:600;"><i class="fa-solid fa-circle-check"></i> Answered</span>`
+      : `<button class="btn-sm" onclick="openAnswerModal(${item.id})" style="background:var(--clr-indigo);border:none;color:#fff;cursor:pointer;padding:4px 8px;border-radius:4px;">
+           <i class="fa-solid fa-comment-dots"></i> Answer
+         </button>`;
+
+    return `
+      <tr>
+        <td>#${item.id}</td>
+        <td style="font-weight:600">${escapeHtml(item.patient_name)}</td>
+        <td>${escapeHtml(item.patient_phone)}</td>
+        <td style="font-style:italic">${escapeHtml(item.question)}</td>
+        <td><span class="badge ${statusClass}">${item.status}</span></td>
+        <td>${escapeHtml(item.created_at)}</td>
+        <td>${actionBtn}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+window.openAnswerModal = function(id) {
+  const item = (clinicData.pendingQueries || []).find(x => x.id === id);
+  if (!item) return;
+
+  document.getElementById('pending-query-id').value = item.id;
+  document.getElementById('pending-query-text').value = item.question;
+  pqModal.classList.add('open');
+};
+
+// --- Telemetry Monitoring render ---
+async function renderMonitoringTab() {
+  const latencyEl = document.getElementById('monitor-avg-latency');
+  const successEl = document.getElementById('monitor-success-rate');
+  const geminiGrid = document.getElementById('gemini-keys-grid');
+  const groqGrid = document.getElementById('groq-keys-grid');
+  const orGrid = document.getElementById('openrouter-keys-grid');
+  const errorsTableBody = document.getElementById('monitor-errors-table-body');
+
+  try {
+    const res = await fetch('/api/monitoring/health').then(r => r.json());
+    if (res.success) {
+      const data = res.data;
+      if (latencyEl) latencyEl.textContent = `${data.telemetry.avgLatencyMs}ms`;
+      if (successEl) successEl.textContent = `${data.telemetry.successRatePercent}%`;
+
+      // Render Gemini Keys
+      if (geminiGrid && data.keys.gemini) {
+        geminiGrid.innerHTML = data.keys.gemini.map(k => {
+          const badgeClass = k.active ? 'active' : 'cooldown';
+          return `
+            <div class="key-badge ${badgeClass}">
+              <span class="indicator-dot"></span>
+              <span>Key #${k.index + 1} (${k.usage} calls)</span>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Render Groq Keys
+      if (groqGrid && data.keys.groq) {
+        groqGrid.innerHTML = data.keys.groq.map(k => {
+          const badgeClass = k.active ? 'active' : 'cooldown';
+          return `
+            <div class="key-badge ${badgeClass}">
+              <span class="indicator-dot"></span>
+              <span>Key #${k.index + 1} (${k.usage} calls)</span>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Render OpenRouter Keys
+      if (orGrid && data.keys.openrouter) {
+        orGrid.innerHTML = data.keys.openrouter.map(k => {
+          const badgeClass = k.active ? 'active' : 'cooldown';
+          return `
+            <div class="key-badge ${badgeClass}">
+              <span class="indicator-dot"></span>
+              <span>Key #${k.index + 1} (${k.usage} calls)</span>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+  } catch (err) {
+    console.error('Error loading monitoring data:', err);
+  }
+
+  // Render recent errors
+  try {
+    const errRes = await fetch('/api/errors').then(r => r.json());
+    if (errRes.success && errorsTableBody) {
+      const errors = errRes.errors || [];
+      if (errors.length === 0) {
+        errorsTableBody.innerHTML = '<tr class="empty-row"><td colspan="4">No server errors logged. System status 100% operational.</td></tr>';
+      } else {
+        errorsTableBody.innerHTML = errors.map(err => `
+          <tr>
+            <td style="color:var(--clr-rose);">${escapeHtml(err.timestamp)}</td>
+            <td style="font-weight:600;">${escapeHtml(err.context)}</td>
+            <td style="font-style:italic;">${escapeHtml(err.message)}</td>
+            <td><pre style="max-height:80px; overflow-y:auto; font-size:0.75rem; color:var(--text-muted);">${escapeHtml(err.stack || '')}</pre></td>
+          </tr>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching errors log:', err);
+  }
 }

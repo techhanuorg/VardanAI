@@ -1062,3 +1062,107 @@ body {
   line-height: 1.4;
 }
 
+/* Light Theme Variables Overrides */
+body.light-theme {
+  --bg-app: #f1f5f9;
+  --bg-sidebar: #ffffff;
+  --bg-card: rgba(255, 255, 255, 0.75);
+  --bg-card-hover: rgba(241, 245, 249, 0.9);
+  --border-color: rgba(15, 23, 42, 0.08);
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --clr-indigo: #0284c7; /* Clinical sky blue/teal theme accent */
+  --clr-indigo-glow: rgba(2, 132, 199, 0.15);
+}
+
+body.light-theme .glass-container,
+body.light-theme .stat-card,
+body.light-theme .chart-card,
+body.light-theme .data-table-container {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: 0 4px 15px rgba(15, 23, 42, 0.05);
+}
+
+body.light-theme .sidebar {
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+body.light-theme .nav-item {
+  color: #475569;
+}
+
+body.light-theme .nav-item:hover {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+body.light-theme .nav-item.active {
+  background: var(--clr-indigo-glow);
+  color: var(--clr-indigo);
+}
+
+body.light-theme .data-table th {
+  background: #f8fafc;
+  color: #475569;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+body.light-theme .data-table td {
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+}
+
+body.light-theme .search-box input {
+  color: #0f172a;
+}
+
+/* Key Health Indicator Dots */
+.key-dots-grid {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.key-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #fff;
+  transition: all 0.25s;
+}
+
+body.light-theme .key-badge {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+}
+
+.key-badge .indicator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.key-badge.active .indicator-dot {
+  background-color: var(--clr-success);
+  box-shadow: 0 0 8px var(--clr-success);
+}
+
+.key-badge.cooldown .indicator-dot {
+  background-color: var(--clr-rose);
+  box-shadow: 0 0 8px var(--clr-rose);
+}
+
+.key-badge.cooldown {
+  opacity: 0.55;
+  border-color: rgba(244, 63, 94, 0.2);
+}
+
+

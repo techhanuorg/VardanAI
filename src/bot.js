@@ -13,35 +13,62 @@ let sock = null;
 let isConnected = false;
 let currentQr = null;
 
+// Heuristic script and vocabulary language detector
+function detectLanguage(text) {
+  const clean = text.trim();
+  
+  // 1. Devanagari script Unicode check for Hindi
+  if (/[\u0900-\u097F]/.test(clean)) {
+    return 'hindi';
+  }
+
+  // 2. Common Hinglish loanwords and particles check
+  const lower = clean.toLowerCase();
+  const hinglishKeywords = [
+    'hai', 'tha', 'raha', 'rahi', 'kya', 'kaha', 'kab', 'kaun', 'kaise', 
+    'ko', 'se', 'ka', 'ki', 'ke', 'mujhe', 'apna', 'naam', 'umar', 'dikkat', 
+    'kal', 'aana', 'dikhana', 'dawa', 'dawaein', 'daktar', 'hospital', 'reception',
+    'namaste', 'pranam', 'ram', 'shyam', 'aaj', 'parso', 'baje', 'baji', 'ghanta',
+    'takleef', 'dard', 'pet', 'sir', 'khansi', 'bukhar', 'sardi', 'kamjori'
+  ];
+  
+  const matchesHinglish = hinglishKeywords.some(kw => {
+    const regex = new RegExp(`\\b${kw}\\b`, 'i');
+    return regex.test(lower);
+  });
+
+  if (matchesHinglish) {
+    return 'hinglish';
+  }
+
+  // 3. Fallback to English
+  return 'english';
+}
+
 /**
  * Initializes and starts the WhatsApp bot socket connection.
  */
 async function startBot() {
   logger.info('Starting WhatsApp AI Bot...');
   
-  // Ensure the auth directory exists
   const authPath = path.join(__dirname, '../auth');
   if (!fs.existsSync(authPath)) {
     fs.mkdirSync(authPath, { recursive: true });
   }
 
-  // Load auth state from auth/ folder
   const { state, saveCreds } = await useMultiFileAuthState(authPath);
 
-  // Initialize Socket connection
   sock = makeWASocket({
     auth: state,
-    printQRInTerminal: false, // We will print it ourselves with custom style
+    printQRInTerminal: false,
     defaultQueryTimeoutMs: 60000,
     connectTimeoutMs: 60000,
     syncFullHistory: false,
     markOnlineOnConnect: true
   });
 
-  // Track credentials updates
   sock.ev.on('creds.update', saveCreds);
 
-  // Connection Update Event Listener
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
@@ -59,12 +86,11 @@ async function startBot() {
       logger.warn(`WhatsApp connection closed. Status Code: ${statusCode}. Reconnecting: ${shouldReconnect}`);
 
       if (shouldReconnect) {
-        // Delay reconnecting to avoid tight loops on disconnect
         setTimeout(() => {
           startBot();
         }, 5000);
       } else {
-        logger.warn('WhatsApp Session permanently logged out or credentials invalid. Wiping auth/ folder and restarting automatically...');
+        logger.warn('WhatsApp Session permanently logged out. Wiping auth/ folder and restarting...');
         try {
           fs.rmSync(path.join(__dirname, '../auth'), { recursive: true, force: true });
         } catch (e) {
@@ -76,15 +102,14 @@ async function startBot() {
       }
     } else if (connection === 'open') {
       isConnected = true;
-      currentQr = null; // Clear QR when connected
+      currentQr = null;
       logger.info('WhatsApp AI Receptionist successfully connected and active!');
       
-      // Run pending follow-ups check on startup
+      // Initial background job trigger
       setTimeout(checkAndSendFollowups, 5000);
     }
   });
 
-  // Incoming Messages Event Listener
   sock.ev.on('messages.upsert', async (m) => {
     logger.info(`messages.upsert event: type=${m.type}, messages=${m.messages?.length || 0}`);
     try {
@@ -107,15 +132,12 @@ async function startBot() {
         const phone = remoteJid.split('@')[0];
         logger.info(`Received WhatsApp message from [${phone}]: "${text}"`);
 
-        // 1. Retrieve or create patient session memory
         const session = getOrCreateSession(phone);
-
-        // 2. Immediately log incoming message to SQLite messages table
         const messageId = db.saveIncomingMessage(phone, text);
 
-        // 2.5. Check if the message is from a registered doctor and matches a command
+        // Check if message is from doctor
         const cleanDoctorPhone = phone.replace(/\D/g, '');
-        const doctorRecord = db.db.prepare('SELECT * FROM doctors WHERE replace(phone, "+", "") = ?').get(cleanDoctorPhone);
+        const doctorRecord = db.db.prepare("SELECT * FROM doctors WHERE replace(phone, '+', '') = ?").get(cleanDoctorPhone);
         
         if (doctorRecord) {
           const commandText = text.trim().toLowerCase();
@@ -182,7 +204,7 @@ async function startBot() {
           }
         }
 
-        // 3. Check for Critical Symptoms
+        // Check for Critical Symptoms
         const criticalSymptom = detectCriticalSymptom(text);
         if (criticalSymptom) {
           logger.warn(`Critical alert detected from [${phone}]. Symptom matched: ${criticalSymptom}`);
@@ -192,67 +214,87 @@ async function startBot() {
           continue;
         }
 
-        // 3.5. Check for Reset/Change Language Commands (Supports phrase matches)
-        const checkText = text.trim().toLowerCase();
-        const changeLanguageKeywords = [
-          'change language', 'change bhasha', 'bhasha badlein', 'language change', '/language', 
-          'भाषा बदलें', 'bhasha badlo', 'change language please', 'language badlo', 'bhasha change', 
-          'language change kro', 'भाषा बदल दो', 'change bhasha please', 'bhasha badalna hai', 'language reset'
-        ];
-        const matchesKeyword = changeLanguageKeywords.some(kw => checkText.includes(kw)) ||
-                              (checkText.includes('language') && (checkText.includes('change') || checkText.includes('reset') || checkText.includes('badle') || checkText.includes('badlo') || checkText.includes('select'))) ||
-                              (checkText.includes('bhasha') && (checkText.includes('change') || checkText.includes('badle') || checkText.includes('badlo') || checkText.includes('reset')));
-
-        if (matchesKeyword) {
-          session.profile.language = null;
-          db.savePatientLanguage(phone, null);
-          
-          const menu = "Namaste! Welcome to Vardan Hospital. 😊\nकृपया बातचीत के लिए अपनी पसंदीदा भाषा चुनें / Please choose your preferred language:\n\n*1. Hinglish* (Hindi written in English Script)\n*2. Hindi* (हिंदी - देवनागरी लिपि)\n*3. English* (Pure English)\n\n👉 Reply with *1*, *2* or *3* to select.";
-          await sock.sendMessage(remoteJid, { text: menu });
-          db.saveOutgoingReply(messageId, menu);
-          continue;
+        // Retrieve or create patient profile
+        const cleanPhone = phone.replace(/\D/g, '');
+        let patient = db.db.prepare('SELECT * FROM patients WHERE phone = ?').get(cleanPhone);
+        
+        if (!patient) {
+          patient = db.savePatient({ phone: cleanPhone, name: '', age: '', gender: '' });
         }
 
-        // 4. Intercept for Language Preference Selection if not set
-        if (!session.profile.language) {
-          const cleanText = text.trim();
-          if (cleanText === '1' || cleanText.toLowerCase() === 'hinglish') {
-            session.profile.language = 'hinglish';
-            db.savePatientLanguage(phone, 'hinglish');
+        // Script-based language detection per message
+        const detectedLang = detectLanguage(text);
+        if (patient.preferred_language !== detectedLang) {
+          db.savePatientLanguage(cleanPhone, detectedLang);
+          patient.preferred_language = detectedLang;
+        }
+        session.profile.language = detectedLang;
+
+        // Log message to conversations history
+        db.saveConversation(patient.id, 'user', text, 'Router', detectedLang);
+
+        // --- Multi-Agent Registration Flow ---
+        const isRegistered = patient.name && patient.age && patient.gender;
+        if (!isRegistered) {
+          if (!patient.name) {
+            db.db.prepare('UPDATE patients SET name = ? WHERE phone = ?').run(text.trim(), cleanPhone);
+            patient.name = text.trim();
+            session.profile.name = text.trim();
             
-            const reply = "Dhanyawad! Ab hum Hinglish me baat karenge. 😊\n\nKripya apna naam aur aapko kya medical dikkat hai, ye batayein.";
+            const reply = detectedLang === 'hindi'
+              ? `नमस्ते ${patient.name} जी! कृपया अपनी उम्र (Age) बताएं।`
+              : detectedLang === 'english'
+                ? `Thank you ${patient.name}! Please share your Age.`
+                : `Dhanyawad ${patient.name} ji! Kripya apni Umar (Age) batayein.`;
+            
             await sock.sendMessage(remoteJid, { text: reply });
             db.saveOutgoingReply(messageId, reply);
-            addMessageToHistory(phone, 'model', reply);
+            db.saveConversation(patient.id, 'model', reply, 'Router', detectedLang);
             continue;
-          } else if (cleanText === '2' || cleanText.toLowerCase() === 'hindi') {
-            session.profile.language = 'hindi';
-            db.savePatientLanguage(phone, 'hindi');
+          }
+          
+          if (!patient.age) {
+            db.db.prepare('UPDATE patients SET age = ? WHERE phone = ?').run(text.trim(), cleanPhone);
+            patient.age = text.trim();
+            session.profile.age = text.trim();
+
+            const reply = detectedLang === 'hindi'
+              ? `अपनी उम्र ${patient.age} बताने के लिए धन्यवाद। कृपया अपना लिंग (Gender - Male/Female/Other) बताएं।`
+              : detectedLang === 'english'
+                ? `Thank you for sharing your age. Please state your Gender (Male/Female/Other).`
+                : `Dhanyawad! Kripya apna Gender (Male/Female/Other) batayein.`;
             
-            const reply = "धन्यवाद! अब हम हिंदी में बात करेंगे। 😊\n\nकृपया अपना नाम और आपको क्या शारीरिक समस्या/लक्षण हैं, यह बताएं।";
             await sock.sendMessage(remoteJid, { text: reply });
             db.saveOutgoingReply(messageId, reply);
-            addMessageToHistory(phone, 'model', reply);
+            db.saveConversation(patient.id, 'model', reply, 'Router', detectedLang);
             continue;
-          } else if (cleanText === '3' || cleanText.toLowerCase() === 'english') {
-            session.profile.language = 'english';
-            db.savePatientLanguage(phone, 'english');
+          }
+
+          if (!patient.gender) {
+            db.db.prepare('UPDATE patients SET gender = ? WHERE phone = ?').run(text.trim(), cleanPhone);
+            patient.gender = text.trim();
+            session.profile.gender = text.trim();
+
+            const reply = detectedLang === 'hindi'
+              ? `धन्यवाद! आपका पेशेंट प्रोफाइल पंजीकृत हो चुका है:\n👤 नाम: ${patient.name}\n🎂 उम्र: ${patient.age}\n🚻 लिंग: ${patient.gender}\n\nमैं आपकी क्या सहायता कर सकती हूँ? (जैसे: अपॉइंटमेंट बुक करना, या कोई सवाल पूछना)`
+              : detectedLang === 'english'
+                ? `Thank you! Your patient profile has been registered:\n👤 Name: ${patient.name}\n🎂 Age: ${patient.age}\n🚻 Gender: ${patient.gender}\n\nHow can I help you today? (e.g., book an appointment, ask an inquiry)`
+                : `Dhanyawad! Aapka patient profile register ho gaya hai:\n👤 Name: ${patient.name}\n🎂 Age: ${patient.age}\n🚻 Gender: ${patient.gender}\n\nMain aapki kya help kar sakti hu? (Jaise: appointment book karna, ya timings poochna)`;
             
-            const reply = "Thank you! We will now communicate in English. 😊\n\nPlease share your name and the medical problem or symptoms you are experiencing.";
             await sock.sendMessage(remoteJid, { text: reply });
             db.saveOutgoingReply(messageId, reply);
-            addMessageToHistory(phone, 'model', reply);
-            continue;
-          } else {
-            const menu = "Namaste! Welcome to Vardan Hospital. 😊\nकृपया बातचीत के लिए अपनी पसंदीदा भाषा चुनें / Please choose your preferred language:\n\n*1. Hinglish* (Hindi written in English Script)\n*2. Hindi* (हिंदी - देवनागरी लिपि)\n*3. English* (Pure English)\n\n👉 Reply with *1*, *2* or *3* to select.";
-            await sock.sendMessage(remoteJid, { text: menu });
-            db.saveOutgoingReply(messageId, menu);
+            db.saveConversation(patient.id, 'model', reply, 'Router', detectedLang);
             continue;
           }
         }
 
+        // Load profile data into memory session
+        session.profile.name = patient.name;
+        session.profile.age = patient.age;
+        session.profile.gender = patient.gender;
+
         try {
-          // Define callbacks for tool calling
+          // Callback: Profile tool execution
           const onProfileUpdate = async (patientPhone, args) => {
             updateProfile(patientPhone, args);
             db.savePatient({
@@ -263,63 +305,104 @@ async function startBot() {
             });
           };
 
+          // Callback: Appointment booking tool execution
           const onBookAppointment = async (patientPhone) => {
-            const appt = await executeAppointmentBooking(patientPhone);
+            const tempDoctor = session.profile.doctor || "General Physician";
             
-            // Notify the assigned doctor via WhatsApp on confirmed booking
-            try {
-              const docRecord = db.db.prepare('SELECT phone FROM doctors WHERE name = ?').get(appt.doctor);
-              if (docRecord && docRecord.phone && docRecord.phone.trim()) {
-                const docJid = `${docRecord.phone.trim()}@s.whatsapp.net`;
+            // Re-query doctor record to fetch details
+            const matchedDoctor = db.db.prepare("SELECT * FROM doctors WHERE name LIKE ? OR department LIKE ?").get(`%${tempDoctor}%`, `%${tempDoctor}%`);
+            
+            const doctorId = matchedDoctor ? matchedDoctor.id : null;
+            const doctorName = matchedDoctor ? matchedDoctor.name : tempDoctor;
+
+            // Conflict Check: Query SQLite directly before final confirm
+            const conflict = db.db.prepare('SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND date = ? AND time_slot = ? AND status = \'Booked\'').get(doctorId, session.profile.preferredDate, session.profile.preferredTime).count;
+            if (conflict > 0) {
+              throw new Error("Conflict: This exact time slot is already booked for this doctor. Please pick an alternative time slot.");
+            }
+
+            const appt = await db.saveAppointment({
+              phone: patientPhone,
+              name: session.profile.name,
+              age: session.profile.age,
+              gender: session.profile.gender,
+              doctor: doctorName,
+              doctor_id: doctorId,
+              date: session.profile.preferredDate,
+              time: session.profile.preferredTime,
+              time_slot: session.profile.preferredTime,
+              problem: session.profile.problem || 'Checkup'
+            });
+            
+            // Send doctor WhatsApp booking alert
+            if (matchedDoctor && matchedDoctor.phone && matchedDoctor.phone.trim()) {
+              try {
+                const docJid = `${matchedDoctor.phone.trim()}@s.whatsapp.net`;
                 const notificationMsg = `*Vardan Hospital Notification* 🏥\n\nHello Doctor, a new appointment has been scheduled:\n\n👤 *Patient:* ${appt.name}\n📅 *Date:* ${appt.date}\n⏰ *Time Slot:* ${appt.time}\n❓ *Problem:* ${appt.problem || 'N/A'}\n📱 *Patient Phone:* +${appt.phone}`;
                 await sock.sendMessage(docJid, { text: notificationMsg });
-                logger.info(`WhatsApp appointment notification sent to Doctor: ${appt.doctor} (${docRecord.phone})`);
+                logger.info(`WhatsApp appointment notification sent to Doctor: ${doctorName}`);
+              } catch (sendErr) {
+                logger.error(`Failed to send booking notification to doctor: ${sendErr.message}`);
               }
-            } catch (sendErr) {
-              logger.error(`Failed to send booking notification to doctor: ${sendErr.message}`);
             }
 
             return appt;
           };
 
+          // Callback: Follow-up tool execution
           const onScheduleFollowup = async (patientPhone, medicationDurationDays) => {
             const patientName = session.profile.name || "Patient";
-            const daysToWait = Math.max(1, medicationDurationDays - 1); // e.g., 9 days for 10-day meds
+            const daysToWait = Math.max(1, medicationDurationDays - 1);
             
             const scheduledDate = new Date();
             scheduledDate.setDate(scheduledDate.getDate() + daysToWait);
-            const dateStr = scheduledDate.toISOString().split('T')[0]; // YYYY-MM-DD
+            const dateStr = scheduledDate.toISOString().split('T')[0];
+
+            // Build dynamic follow-up template
+            const followupMessage = detectedLang === 'hindi'
+              ? `नमस्ते ${patientName} जी, आपके ${medicationDurationDays} दिनों के दवाई का कोर्स कल समाप्त हो रहा है। कृपया नया स्टॉक लेने या डॉक्टर से दोबारा मिलने के लिए वरदान हॉस्पिटल आएं। धन्यवाद!`
+              : detectedLang === 'english'
+                ? `Hello ${patientName}, your ${medicationDurationDays} days medication course is ending tomorrow. Please visit Vardan Hospital for checkup or medicine refills. Thank you!`
+                : `Namaste ${patientName} ji, aapki ${medicationDurationDays} din ki dawa ka course kal khatam ho raha hai. Kripya follow-up consult ya medicine stock refill ke liye Vardan Hospital visit karein. Dhanyawad!`;
             
-            const followupMessage = `Namaste ${patientName} ji, aapki ${medicationDurationDays} din ki dawaiyo ki course kal poori ho rahi hai. Kripya naye stocks lene ke liye ya doctor se consult karne ke liye Vardan Hospital visit karein. Aap direct call bhi kar sakte hain: +91-9876543210. Dhanyawad!`;
-            
-            db.saveFollowup({
-              patient_phone: patientPhone,
-              patient_name: patientName,
-              message: followupMessage,
-              scheduled_date: dateStr
+            db.saveFollowUpJob({
+              patient_id: patient.id,
+              trigger_date: dateStr,
+              message_template: followupMessage,
+              doctor_id: null
             });
             
             logger.info(`Scheduled follow-up reminder for +${patientPhone} on ${dateStr} (in ${daysToWait} days)`);
             return { success: true, date: dateStr };
           };
 
-          // Call Gemini (handles recursive tool calls under the hood)
+          // Map model agent used
+          let activeAgent = 'FAQ';
+          if (text.toLowerCase().includes('book') || text.toLowerCase().includes('appoint') || text.toLowerCase().includes('millna')) {
+            activeAgent = 'Booking';
+          }
+
+          // Call the Unified LLM gateway
           const replyText = await generateReceptionistResponse(
             phone,
             text,
             session.history,
-            session.profile.language,
             onProfileUpdate,
             onBookAppointment,
-            onScheduleFollowup
+            onScheduleFollowup,
+            detectedLang
           );
 
           if (replyText.trim()) {
             await sock.sendMessage(remoteJid, { text: replyText });
             logger.info(`Sent reply to [${phone}]: "${replyText}"`);
+            
             db.saveOutgoingReply(messageId, replyText);
             addMessageToHistory(phone, 'user', text);
             addMessageToHistory(phone, 'model', replyText);
+
+            // Log response to conversations history
+            db.saveConversation(patient.id, 'model', replyText, activeAgent, detectedLang);
           }
         } catch (innerErr) {
           logger.error(`Error processing message from [${phone}]: ${innerErr.message}`, innerErr);
@@ -333,17 +416,16 @@ async function startBot() {
           if (global.lastErrors.length > 50) global.lastErrors.shift();
 
           try {
-            const fallbackText = "Namaste. Hospital server par temporary high traffic hai. Kripya ek baar fir se message likhein, ya direct call karein: +91-9876543210.";
+            const fallbackText = detectedLang === 'hindi'
+              ? "नमस्ते। हॉस्पिटल सर्वर पर अभी अधिक लोड है। कृपया कुछ देर बाद दोबारा संदेश भेजें या सीधे संपर्क करें: +91-9876543210।"
+              : detectedLang === 'english'
+                ? "Hello. The hospital server is experiencing temporary high traffic. Please try again in a few moments or call us: +91-9876543210."
+                : "Namaste. Hospital server par temporary high traffic hai. Kripya ek baar fir se message likhein, ya direct call karein: +91-9876543210.";
+            
             await sock.sendMessage(remoteJid, { text: fallbackText });
             db.saveOutgoingReply(messageId, fallbackText);
           } catch (sendErr) {
             logger.error('Failed to send fallback reply:', sendErr);
-            global.lastErrors.push({
-              timestamp: new Date().toISOString(),
-              context: `failed sending fallback for phone ${phone}`,
-              message: sendErr.message,
-              stack: sendErr.stack
-            });
           }
         }
       }
@@ -362,7 +444,7 @@ async function startBot() {
 }
 
 /**
- * Automatically checks and sends pending follow-up alerts to patients
+ * Hourly Cron Job: Sends pending follow-up alerts and checks for doctor escalations
  */
 async function checkAndSendFollowups() {
   if (!sock || !isConnected) {
@@ -371,36 +453,66 @@ async function checkAndSendFollowups() {
   }
   
   try {
-    const pendings = db.getPendingFollowups();
-    if (pendings.length === 0) {
-      logger.debug('No pending follow-ups scheduled for today.');
-      return;
-    }
-    
-    logger.info(`Found ${pendings.length} pending follow-up campaigns to send...`);
-    
-    for (const f of pendings) {
-      try {
-        const jid = `${f.patient_phone}@s.whatsapp.net`;
-        await sock.sendMessage(jid, { text: f.message });
-        db.updateFollowupStatus(f.id, 'Sent');
-        logger.info(`Follow-up alert sent successfully to +${f.patient_phone}`);
-      } catch (err) {
-        logger.error(`Error sending follow-up alert to +${f.patient_phone}: ${err.message}`);
-        db.updateFollowupStatus(f.id, 'Failed');
+    // 1. Process pending reminders
+    const pendings = db.getPendingFollowUpJobs();
+    if (pendings.length > 0) {
+      logger.info(`Found ${pendings.length} pending follow-up jobs to trigger...`);
+      for (const job of pendings) {
+        try {
+          const jid = `${job.patient_phone}@s.whatsapp.net`;
+          await sock.sendMessage(jid, { text: job.message_template });
+          db.updateFollowUpJobStatus(job.id, 'sent');
+          logger.info(`Follow-up job ID ${job.id} sent successfully to patient: ${job.patient_name}`);
+        } catch (err) {
+          logger.error(`Error sending follow-up job ID ${job.id}: ${err.message}`);
+        }
       }
     }
+
+    // 2. Process escalations (jobs triggered > 24 hours ago with no user replies)
+    const sentJobs = db.db.prepare(`
+      SELECT j.*, p.phone as patient_phone, p.name as patient_name, d.phone as doctor_phone, d.name as doctor_name
+      FROM follow_up_jobs j
+      JOIN patients p ON j.patient_id = p.id
+      LEFT JOIN doctors d ON j.doctor_id = d.id
+      WHERE j.status = 'sent' AND datetime(j.created_at, '+24 hours') <= datetime('now', 'localtime')
+    `).all();
+
+    for (const job of sentJobs) {
+      const chatCount = db.db.prepare("SELECT COUNT(*) as count FROM conversations WHERE patient_id = ? AND role = 'user' AND timestamp > ?").get(job.patient_id, job.created_at).count;
+      
+      if (chatCount === 0) {
+        db.updateFollowUpJobStatus(job.id, 'escalated');
+        logger.warn(`Escalation triggered: patient ${job.patient_name} (+${job.patient_phone}) did not respond in 24h.`);
+        
+        if (job.doctor_phone && job.doctor_phone.trim()) {
+          try {
+            const docJid = `${job.doctor_phone.trim()}@s.whatsapp.net`;
+            const alertMsg = `*Vardan Hospital Escalation Alert* ⚠️\n\nHello Dr. ${job.doctor_name}, patient *${job.patient_name}* (+${job.patient_phone}) has not responded to their medication follow-up reminder sent 24 hours ago. Please review if human follow-up is required.`;
+            await sock.sendMessage(docJid, { text: alertMsg });
+            logger.info(`Escalation notification sent to Doctor: ${job.doctor_name}`);
+          } catch (sendErr) {
+            logger.error(`Failed to send escalation alert to doctor: ${sendErr.message}`);
+          }
+        }
+      } else {
+        // Patient responded, mark job as acknowledged
+        db.updateFollowUpJobStatus(job.id, 'acknowledged');
+      }
+    }
+
   } catch (error) {
-    logger.error('Error running checkAndSendFollowups:', error);
+    logger.error('Error running checkAndSendFollowups background process:', error);
   }
 }
 
-// Run the follow-ups checker every 4 hours (4 * 60 * 60 * 1000 = 14400000ms)
-setInterval(checkAndSendFollowups, 14400000);
+// Run the cron scheduler loop every 1 hour (1 * 60 * 60 * 1000 = 3600000ms)
+setInterval(checkAndSendFollowups, 3600000);
 
 module.exports = {
   startBot,
   getSock: () => sock,
   getIsConnected: () => isConnected,
-  getCurrentQr: () => currentQr
+  getCurrentQr: () => currentQr,
+  checkAndSendFollowups
 };

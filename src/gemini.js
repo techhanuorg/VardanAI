@@ -1,298 +1,48 @@
-const { GoogleGenAI } = require('@google/genai');
-const { GEMINI_API_KEY, logger } = require('./config');
 const { getSystemPrompt } = require('./prompts');
 const db = require('./db');
-
-// Load and parse native Gemini API keys
-const apiKeys = GEMINI_API_KEY ? GEMINI_API_KEY.split(',').map(k => k.trim()).filter(Boolean) : [];
-let currentKeyIndex = 0;
-
-// Load and parse OpenRouter API keys
-const openRouterKeys = process.env.OPENROUTER_API_KEYS ? process.env.OPENROUTER_API_KEYS.split(',').map(k => k.trim()).filter(Boolean) : [];
-let currentOpenRouterIndex = 0;
-
-// Load and parse Groq API keys
-const groqKeys = (process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || '').split(',').map(k => k.trim()).filter(Boolean);
+const { logger } = require('./config');
+const llmGateway = require('./llm_gateway');
 
 /**
- * Returns a GoogleGenAI client instance using the currently active native key.
+ * Generates response for the VardanAI Multi-Agent system.
+ * Uses llm_gateway under-the-hood for multi-key failover and parallel races.
  */
-function getAIClient() {
-  if (apiKeys.length === 0) {
-    throw new Error('No native Gemini API keys found in the environment configuration.');
+async function generateReceptionistResponse(phone, userMessage, chatHistory, onProfileUpdate, onBookAppointment, onScheduleFollowup, language) {
+  // 1. Fetch active doctors list from the database
+  let doctorsList = [];
+  try {
+    doctorsList = db.getDoctors().filter(d => d.active !== 0);
+  } catch (err) {
+    logger.error(`Failed to fetch doctors list for prompt: ${err.message}`);
   }
-  const key = apiKeys[currentKeyIndex];
-  // Active round-robin: shift to the next key index on every call to distribute rate limits
-  currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
-  return new GoogleGenAI({ apiKey: key });
-}
 
-/**
- * Rotates to the next native Gemini API key.
- */
-function rotateAPIKey() {
-  if (apiKeys.length <= 1) return false;
-  currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
-  logger.warn('Native Gemini API key rotated.');
-  return true;
-}
+  // 2. Load cached Knowledge Base facts from database
+  let kbContext = '';
+  try {
+    const kbEntries = db.getKB();
+    kbContext = kbEntries.map(entry => {
+      return `Category: ${entry.category}\nQuestion Variants: ${entry.question_variants}\n- Hindi: ${entry.answer_hi}\n- English: ${entry.answer_en}\n- Hinglish: ${entry.answer_hinglish}`;
+    }).join('\n\n');
+  } catch (err) {
+    logger.error(`Failed to load knowledge base for prompt: ${err.message}`);
+  }
 
-/**
- * Returns the currently active OpenRouter API key.
- */
-function getOpenRouterKey() {
-  if (openRouterKeys.length === 0) return null;
-  const key = openRouterKeys[currentOpenRouterIndex];
-  // Active round-robin: shift to the next key index on every call to distribute rate limits
-  currentOpenRouterIndex = (currentOpenRouterIndex + 1) % openRouterKeys.length;
-  return key;
-}
+  const doctorsDescription = doctorsList && doctorsList.length > 0 
+    ? doctorsList.map(doc => `Dr. ${doc.name} (${doc.department})`).join(', ')
+    : 'No doctors currently available.';
 
-/**
- * Rotates to the next OpenRouter API key.
- */
-function rotateOpenRouterKey() {
-  if (openRouterKeys.length <= 1) return false;
-  currentOpenRouterIndex = (currentOpenRouterIndex + 1) % openRouterKeys.length;
-  logger.warn('OpenRouter API key rotated.');
-  return true;
-}
-
-/**
- * Executes a single native Gemini request.
- */
-async function callGeminiSingleKey(key, index, contents, functionDeclarations, systemInstruction) {
-  const aiClient = new GoogleGenAI({ apiKey: key });
-  const requestPromise = aiClient.models.generateContent({
-    model: 'gemini-flash-latest',
-    contents: contents,
-    config: {
-      systemInstruction: systemInstruction,
-      tools: [{ functionDeclarations }]
-    }
+  // Build the dynamic system prompt instructions
+  const systemInstruction = getSystemPrompt({
+    doctorsList,
+    kbContext,
+    language: language || 'hinglish'
   });
 
-  // Race request against a 10-second timeout to prevent hangs
-  const response = await Promise.race([
-    requestPromise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('Native Gemini Key Timeout')), 10000))
-  ]);
-
-  return { response, keyIndex: index };
-}
-
-/**
- * Executes a single fallback request to OpenRouter using OpenAI format.
- */
-async function callOpenRouterSingleKey(apiKey, index, contents, tools, systemInstruction) {
-  // Map Gemini contents format to OpenAI messages format
-  const messages = [
-    { role: 'system', content: systemInstruction }
-  ];
-  for (const turn of contents) {
-    const role = turn.role === 'model' ? 'assistant' : 'user';
-    let text = '';
-    if (turn.parts && turn.parts.length > 0) {
-      if (typeof turn.parts[0] === 'string') {
-        text = turn.parts[0];
-      } else if (turn.parts[0].text) {
-        text = turn.parts[0].text;
-      }
-    }
-    messages.push({ role, content: text });
-  }
-
-  // Convert Gemini tools to OpenAI tool definitions
-  const openAITools = tools ? tools.map(t => {
-    return {
-      type: 'function',
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: t.parameters
-      }
-    };
-  }) : undefined;
-
-  const requestBody = {
-    model: 'google/gemini-2.5-flash:free',
-    messages,
-    tools: openAITools
-  };
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-  let response;
-  try {
-    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://github.com/techhanuorg/VardanAI',
-        'X-Title': 'Vardan AI Receptionist',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      throw new Error('OpenRouter API Key Timeout');
-    }
-    throw err;
-  }
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`OpenRouter HTTP ${response.status}: ${errText}`);
-  }
-
-  const data = await response.json();
-  const choice = data.choices && data.choices[0];
-  if (!choice) {
-    throw new Error('OpenRouter API returned empty choices.');
-  }
-
-  const msg = choice.message;
-  const result = {
-    text: msg.content || '',
-    functionCalls: []
-  };
-
-  if (msg.tool_calls && msg.tool_calls.length > 0) {
-    result.functionCalls = msg.tool_calls.map(tc => {
-      let args = {};
-      try {
-        args = typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments;
-      } catch (e) {
-        logger.error(`Error parsing OpenRouter tool call args: ${e.message}`);
-      }
-      return {
-        name: tc.function.name,
-        args
-      };
-    });
-  }
-
-  return { response: result, keyIndex: index };
-}
-
-/**
- * Executes a single fallback request to Groq using OpenAI format.
- */
-async function callGroqSingleKey(apiKey, index, contents, tools, systemInstruction) {
-  // Map Gemini contents format to OpenAI messages format
-  const messages = [
-    { role: 'system', content: systemInstruction }
-  ];
-  for (const turn of contents) {
-    const role = turn.role === 'model' ? 'assistant' : 'user';
-    let text = '';
-    if (turn.parts && turn.parts.length > 0) {
-      if (typeof turn.parts[0] === 'string') {
-        text = turn.parts[0];
-      } else if (turn.parts[0].text) {
-        text = turn.parts[0].text;
-      }
-    }
-    messages.push({ role, content: text });
-  }
-
-  // Convert Gemini tools to OpenAI tool definitions
-  const openAITools = tools ? tools.map(t => {
-    return {
-      type: 'function',
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: t.parameters
-      }
-    };
-  }) : undefined;
-
-  const requestBody = {
-    model: 'llama-3.3-70b-specdec',
-    messages,
-    tools: openAITools
-  };
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-  let response;
-  try {
-    response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      throw new Error('Groq API Key Timeout');
-    }
-    throw err;
-  }
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Groq HTTP ${response.status}: ${errText}`);
-  }
-
-  const data = await response.json();
-  const choice = data.choices && data.choices[0];
-  if (!choice) {
-    throw new Error('Groq API returned empty choices.');
-  }
-
-  const msg = choice.message;
-  const result = {
-    text: msg.content || '',
-    functionCalls: []
-  };
-
-  if (msg.tool_calls && msg.tool_calls.length > 0) {
-    result.functionCalls = msg.tool_calls.map(tc => {
-      let args = {};
-      try {
-        args = typeof tc.function.arguments === 'string' 
-          ? JSON.parse(tc.function.arguments) 
-          : tc.function.arguments;
-      } catch (e) {
-        logger.error(`Error parsing Groq tool args: ${e.message}`);
-      }
-      return {
-        name: tc.function.name,
-        args
-      };
-    });
-  }
-
-  return { response: result, keyIndex: index };
-}
-
-/**
- * Sends a message to Gemini (or OpenRouter fallback) and handles function calling if requested.
- */
-async function generateReceptionistResponse(phone, userMessage, chatHistory, language, onProfileUpdate, onBookAppointment, onScheduleFollowup) {
-  // Fetch active doctors dynamically from database
-  const doctorsList = db.getDoctors();
-  const doctorsDescription = doctorsList.map(d => `${d.name} (${d.department})`).join(', ');
-  const systemInstruction = getSystemPrompt(doctorsList, language);
-
-  // Define tools dynamically using database doctors list
+  // Setup tool/function definitions compatible with Gemini Schema format
   const functionDeclarations = [
     {
       name: 'updatePatientProfile',
-      description: 'Call this whenever the patient shares details about themselves (Name, Age, Gender, Problem, Preferred Doctor, Preferred Date or Time). Call this as soon as any information is extracted.',
+      description: 'Call this as soon as any patient details (name, age, gender, problem, preferred doctor, preferred date/time) are mentioned by the patient. Do NOT wait for all details to be present to call this tool.',
       parameters: {
         type: 'OBJECT',
         properties: {
@@ -327,6 +77,7 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, lan
     }
   ];
 
+  // Map incoming message history to GenAI SDK contents format
   const contents = [
     ...chatHistory,
     { role: 'user', parts: [{ text: userMessage }] }
@@ -339,62 +90,31 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, lan
 
   while (loop && iteration < maxIterations) {
     iteration++;
-    logger.debug(`LLM API call iteration ${iteration} for ${phone}`);
+    logger.debug(`VardanAI execution turn ${iteration} for patient: ${phone}`);
 
     try {
-      let response;
-      let triedOpenRouter = false;
+      // Execute the request through the gateway (handles keys rotation, cooldowns, and fallback)
+      const response = await llmGateway.generateResponse(contents, functionDeclarations, systemInstruction);
 
-      try {
-        // Try all native keys in parallel using Promise.any
-        const promises = apiKeys.map((key, idx) => callGeminiSingleKey(key, idx, contents, functionDeclarations, systemInstruction));
-        const raceResult = await Promise.any(promises);
-        response = raceResult.response;
-        logger.info(`Parallel Native Gemini call: Key index ${raceResult.keyIndex} won the race.`);
-      } catch (geminiError) {
-        logger.error(`All native Gemini API keys failed: ${geminiError.message}. Attempting parallel failover to Groq...`);
-        
-        try {
-          // Try all Groq keys in parallel using Promise.any
-          const groqPromises = groqKeys.map((key, idx) => callGroqSingleKey(key, idx, contents, functionDeclarations, systemInstruction));
-          const groqRaceResult = await Promise.any(groqPromises);
-          response = groqRaceResult.response;
-          logger.info(`Parallel Groq call: Key index ${groqRaceResult.keyIndex} won the race.`);
-        } catch (groqError) {
-          logger.error(`All Groq API keys failed: ${groqError.message}. Attempting parallel failover to OpenRouter...`);
-          
-          try {
-            // Try all OpenRouter keys in parallel using Promise.any
-            const orPromises = openRouterKeys.map((key, idx) => callOpenRouterSingleKey(key, idx, contents, functionDeclarations, systemInstruction));
-            const orRaceResult = await Promise.any(orPromises);
-            response = orRaceResult.response;
-            logger.info(`Parallel OpenRouter call: Key index ${orRaceResult.keyIndex} won the race.`);
-          } catch (orErr) {
-            logger.error(`All OpenRouter failover attempts failed: ${orErr.message}`);
-            throw new Error(`Gemini, Groq, and OpenRouter all failed parallel races. Last error: ${orErr.message}`);
-          }
-        }
-      }
-
-      // Process functions/calls in a unified structure
+      // Check if LLM requested any tool/function calls
       const functionCalls = response.functionCalls;
       if (functionCalls && functionCalls.length > 0) {
-        // Build model's turn with functionCall parts
+        
+        // Add model's functionCall turn to contents history
         const modelParts = functionCalls.map(call => ({
           functionCall: {
             name: call.name,
             args: call.args
           }
         }));
-        
         contents.push({ role: 'model', parts: modelParts });
 
+        // Execute tools
         const responseParts = [];
         for (const call of functionCalls) {
-          logger.info(`LLM requested tool call: ${call.name} with args: ${JSON.stringify(call.args)}`);
-          
+          logger.info(`Executing tool: ${call.name} with args: ${JSON.stringify(call.args)}`);
           let result = { success: false, message: 'Invalid tool' };
-          
+
           if (call.name === 'updatePatientProfile') {
             try {
               await onProfileUpdate(phone, call.args);
@@ -429,10 +149,10 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, lan
           });
         }
 
-        // Add response parts to message history
+        // Add tool execution response back to contents history
         contents.push({ role: 'user', parts: responseParts });
       } else {
-        // No function calls, return final textual answer
+        // No function call, capture text answer and break the loop
         finalResponseText = response.text || '';
         loop = false;
       }
@@ -443,7 +163,7 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, lan
   }
 
   if (iteration >= maxIterations) {
-    logger.warn(`Max iterations reached (${maxIterations}) for generation response loop.`);
+    logger.warn(`Max loop iterations reached (${maxIterations}) for receptionist response.`);
   }
 
   return finalResponseText;
