@@ -20,6 +20,7 @@ function requireAuth(req, res, next) {
     '/api/send-test',
     '/api/errors',
     '/api/qr',
+    '/api/diagnose-keys',
     '/favicon.ico'
   ];
   
@@ -96,6 +97,33 @@ app.get('/api/qr', (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
+});
+
+/**
+ * API: Diagnose Environment API keys
+ */
+app.get('/api/diagnose-keys', (req, res) => {
+  const gemini = process.env.GEMINI_API_KEY || '';
+  const groq = process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || '';
+  const or = process.env.OPENROUTER_API_KEYS || '';
+  
+  res.json({
+    gemini: {
+      rawLength: gemini.length,
+      keysCount: gemini.split(',').filter(Boolean).length,
+      preview: gemini.split(',').map(k => k.trim().substring(0, 8) + '...').join(', ')
+    },
+    groq: {
+      rawLength: groq.length,
+      keysCount: groq.split(',').filter(Boolean).length,
+      preview: groq.split(',').map(k => k.trim().substring(0, 8) + '...').join(', ')
+    },
+    openrouter: {
+      rawLength: or.length,
+      keysCount: or.split(',').filter(Boolean).length,
+      preview: or.split(',').map(k => k.trim().substring(0, 8) + '...').join(', ')
+    }
+  });
 });
 
 // List of connected SSE clients
