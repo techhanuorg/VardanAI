@@ -19,6 +19,7 @@ function requireAuth(req, res, next) {
     '/api/login',
     '/api/send-test',
     '/api/errors',
+    '/api/qr',
     '/favicon.ico'
   ];
   
@@ -79,6 +80,22 @@ app.post('/api/logout', (req, res) => {
  */
 app.get('/api/errors', (req, res) => {
   res.json({ success: true, errors: global.lastErrors || [] });
+});
+
+/**
+ * API: Fetch WhatsApp QR session status (for connection linking)
+ */
+app.get('/api/qr', (req, res) => {
+  try {
+    const botInstance = require('./bot');
+    res.json({
+      success: true,
+      isConnected: botInstance.getIsConnected(),
+      qr: botInstance.getCurrentQr()
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // List of connected SSE clients
