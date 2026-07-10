@@ -46,7 +46,7 @@ async function callGeminiKey(keyItem, contents, functionDeclarations, systemInst
   try {
     const aiClient = new GoogleGenAI({ apiKey: keyItem.key });
     const requestPromise = aiClient.models.generateContent({
-      model: 'gemini-flash-latest',
+      model: 'gemini-3.5-flash',
       contents: contents,
       config: {
         systemInstruction: systemInstruction,
