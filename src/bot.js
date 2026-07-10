@@ -233,65 +233,10 @@ async function startBot() {
         // Log message to conversations history
         db.saveConversation(patient.id, 'user', text, 'Router', detectedLang);
 
-        // --- Multi-Agent Registration Flow ---
-        const isRegistered = patient.name && patient.age && patient.gender;
-        if (!isRegistered) {
-          if (!patient.name) {
-            db.db.prepare('UPDATE patients SET name = ? WHERE phone = ?').run(text.trim(), cleanPhone);
-            patient.name = text.trim();
-            session.profile.name = text.trim();
-            
-            const reply = detectedLang === 'hindi'
-              ? `नमस्ते ${patient.name} जी! कृपया अपनी उम्र (Age) बताएं।`
-              : detectedLang === 'english'
-                ? `Thank you ${patient.name}! Please share your Age.`
-                : `Dhanyawad ${patient.name} ji! Kripya apni Umar (Age) batayein.`;
-            
-            await sock.sendMessage(remoteJid, { text: reply });
-            db.saveOutgoingReply(messageId, reply);
-            db.saveConversation(patient.id, 'model', reply, 'Router', detectedLang);
-            continue;
-          }
-          
-          if (!patient.age) {
-            db.db.prepare('UPDATE patients SET age = ? WHERE phone = ?').run(text.trim(), cleanPhone);
-            patient.age = text.trim();
-            session.profile.age = text.trim();
-
-            const reply = detectedLang === 'hindi'
-              ? `अपनी उम्र ${patient.age} बताने के लिए धन्यवाद। कृपया अपना लिंग (Gender - Male/Female/Other) बताएं।`
-              : detectedLang === 'english'
-                ? `Thank you for sharing your age. Please state your Gender (Male/Female/Other).`
-                : `Dhanyawad! Kripya apna Gender (Male/Female/Other) batayein.`;
-            
-            await sock.sendMessage(remoteJid, { text: reply });
-            db.saveOutgoingReply(messageId, reply);
-            db.saveConversation(patient.id, 'model', reply, 'Router', detectedLang);
-            continue;
-          }
-
-          if (!patient.gender) {
-            db.db.prepare('UPDATE patients SET gender = ? WHERE phone = ?').run(text.trim(), cleanPhone);
-            patient.gender = text.trim();
-            session.profile.gender = text.trim();
-
-            const reply = detectedLang === 'hindi'
-              ? `धन्यवाद! आपका पेशेंट प्रोफाइल पंजीकृत हो चुका है:\n👤 नाम: ${patient.name}\n🎂 उम्र: ${patient.age}\n🚻 लिंग: ${patient.gender}\n\nमैं आपकी क्या सहायता कर सकती हूँ? (जैसे: अपॉइंटमेंट बुक करना, या कोई सवाल पूछना)`
-              : detectedLang === 'english'
-                ? `Thank you! Your patient profile has been registered:\n👤 Name: ${patient.name}\n🎂 Age: ${patient.age}\n🚻 Gender: ${patient.gender}\n\nHow can I help you today? (e.g., book an appointment, ask an inquiry)`
-                : `Dhanyawad! Aapka patient profile register ho gaya hai:\n👤 Name: ${patient.name}\n🎂 Age: ${patient.age}\n🚻 Gender: ${patient.gender}\n\nMain aapki kya help kar sakti hu? (Jaise: appointment book karna, ya timings poochna)`;
-            
-            await sock.sendMessage(remoteJid, { text: reply });
-            db.saveOutgoingReply(messageId, reply);
-            db.saveConversation(patient.id, 'model', reply, 'Router', detectedLang);
-            continue;
-          }
-        }
-
         // Load profile data into memory session
-        session.profile.name = patient.name;
-        session.profile.age = patient.age;
-        session.profile.gender = patient.gender;
+        session.profile.name = patient.name || '';
+        session.profile.age = patient.age || '';
+        session.profile.gender = patient.gender || '';
 
         try {
           // Callback: Profile tool execution

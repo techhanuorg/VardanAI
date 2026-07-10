@@ -31,12 +31,29 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, onP
     ? doctorsList.map(doc => `Dr. ${doc.name} (${doc.department})`).join(', ')
     : 'No doctors currently available.';
 
+  // Get patient registry details from SQLite
+  const cleanPhone = phone.replace(/\D/g, '');
+  const patient = db.db.prepare('SELECT * FROM patients WHERE phone = ?').get(cleanPhone) || { name: '', age: '', gender: '' };
+
+  const registryContext = `
+=========================================
+PATIENT REGISTRY DETAILS (SQLITE):
+- Registered Name: ${patient.name || 'NOT REGISTERED (Please ask patient for their Name)'}
+- Registered Age: ${patient.age || 'NOT REGISTERED (Please ask patient for their Age)'}
+- Registered Gender: ${patient.gender || 'NOT REGISTERED (Please ask patient for their Gender)'}
+
+CRITICAL REGISTRATION RULE:
+If any of the above fields are 'NOT REGISTERED', you MUST ask the patient for them in a natural, polite conversation (in their preferred language/script) and call the 'updatePatientProfile' tool to save it. You cannot book any appointment slots until the Name, Age, and Gender are fully registered.
+=========================================`;
+
   // Build the dynamic system prompt instructions
-  const systemInstruction = getSystemPrompt({
+  const baseInstruction = getSystemPrompt({
     doctorsList,
     kbContext,
     language: language || 'hinglish'
   });
+
+  const systemInstruction = baseInstruction + registryContext;
 
   // Setup tool/function definitions compatible with Gemini Schema format
   const functionDeclarations = [
