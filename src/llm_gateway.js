@@ -2,6 +2,22 @@ const { GoogleGenAI } = require('@google/genai');
 const db = require('./db');
 const { logger } = require('./config');
 
+/**
+ * Recursively converts parameters JSON schema type strings to lowercase for OpenAI/Groq compatibility.
+ */
+function convertSchemaToLowercase(params) {
+  if (!params) return undefined;
+  try {
+    const jsonStr = JSON.stringify(params);
+    const replaced = jsonStr.replace(/"type"\s*:\s*"([A-Z]+)"/g, (match, typeStr) => {
+      return `"type":"${typeStr.toLowerCase()}"`;
+    });
+    return JSON.parse(replaced);
+  } catch (e) {
+    return params;
+  }
+}
+
 // Parse key pools from environment variables
 const geminiPool = (process.env.GEMINI_API_KEY || '').split(',')
   .map((k, idx) => ({ key: k.trim(), cooldownUntil: 0, usageCount: 0, index: idx }))
@@ -114,7 +130,7 @@ async function callGroqKey(keyItem, contents, tools, systemInstruction) {
     function: {
       name: t.name,
       description: t.description,
-      parameters: t.parameters
+      parameters: convertSchemaToLowercase(t.parameters)
     }
   })) : undefined;
 
@@ -228,7 +244,7 @@ async function callOpenRouterKey(keyItem, contents, tools, systemInstruction) {
     function: {
       name: t.name,
       description: t.description,
-      parameters: t.parameters
+      parameters: convertSchemaToLowercase(t.parameters)
     }
   })) : undefined;
 
