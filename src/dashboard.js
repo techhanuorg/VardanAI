@@ -21,6 +21,7 @@ function requireAuth(req, res, next) {
     '/api/errors',
     '/api/qr',
     '/api/diagnose-keys',
+    '/api/monitoring/health',
     '/favicon.ico'
   ];
   
