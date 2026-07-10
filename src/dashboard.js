@@ -108,6 +108,14 @@ app.get('/api/diagnose-keys', (req, res) => {
   const groq = process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || '';
   const or = process.env.OPENROUTER_API_KEYS || '';
   
+  let dbLogs = [];
+  try {
+    const db = require('./db');
+    dbLogs = db.db.prepare('SELECT * FROM llm_call_logs ORDER BY timestamp DESC LIMIT 20').all();
+  } catch (err) {
+    dbLogs = [{ error: err.message }];
+  }
+  
   res.json({
     gemini: {
       rawLength: gemini.length,
@@ -123,7 +131,8 @@ app.get('/api/diagnose-keys', (req, res) => {
       rawLength: or.length,
       keysCount: or.split(',').filter(Boolean).length,
       preview: or.split(',').map(k => k.trim().substring(0, 8) + '...').join(', ')
-    }
+    },
+    dbLogs
   });
 });
 
