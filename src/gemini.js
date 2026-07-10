@@ -4,12 +4,15 @@ const { getSystemPrompt } = require('./prompts');
 const db = require('./db');
 
 // Load and parse native Gemini API keys
-const apiKeys = GEMINI_API_KEY ? GEMINI_API_KEY.split(',').map(k => k.trim()) : [];
+const apiKeys = GEMINI_API_KEY ? GEMINI_API_KEY.split(',').map(k => k.trim()).filter(Boolean) : [];
 let currentKeyIndex = 0;
 
 // Load and parse OpenRouter API keys
-const openRouterKeys = process.env.OPENROUTER_API_KEYS ? process.env.OPENROUTER_API_KEYS.split(',').map(k => k.trim()) : [];
+const openRouterKeys = process.env.OPENROUTER_API_KEYS ? process.env.OPENROUTER_API_KEYS.split(',').map(k => k.trim()).filter(Boolean) : [];
 let currentOpenRouterIndex = 0;
+
+// Load and parse Groq API keys
+const groqKeys = (process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || '').split(',').map(k => k.trim()).filter(Boolean);
 
 /**
  * Returns a GoogleGenAI client instance using the currently active native key.
@@ -178,6 +181,105 @@ async function callOpenRouterSingleKey(apiKey, index, contents, tools, systemIns
 }
 
 /**
+ * Executes a single fallback request to Groq using OpenAI format.
+ */
+async function callGroqSingleKey(apiKey, index, contents, tools, systemInstruction) {
+  // Map Gemini contents format to OpenAI messages format
+  const messages = [
+    { role: 'system', content: systemInstruction }
+  ];
+  for (const turn of contents) {
+    const role = turn.role === 'model' ? 'assistant' : 'user';
+    let text = '';
+    if (turn.parts && turn.parts.length > 0) {
+      if (typeof turn.parts[0] === 'string') {
+        text = turn.parts[0];
+      } else if (turn.parts[0].text) {
+        text = turn.parts[0].text;
+      }
+    }
+    messages.push({ role, content: text });
+  }
+
+  // Convert Gemini tools to OpenAI tool definitions
+  const openAITools = tools ? tools.map(t => {
+    return {
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters
+      }
+    };
+  }) : undefined;
+
+  const requestBody = {
+    model: 'llama-3.3-70b-specdec',
+    messages,
+    tools: openAITools
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  let response;
+  try {
+    response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Groq API Key Timeout');
+    }
+    throw err;
+  }
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Groq HTTP ${response.status}: ${errText}`);
+  }
+
+  const data = await response.json();
+  const choice = data.choices && data.choices[0];
+  if (!choice) {
+    throw new Error('Groq API returned empty choices.');
+  }
+
+  const msg = choice.message;
+  const result = {
+    text: msg.content || '',
+    functionCalls: []
+  };
+
+  if (msg.tool_calls && msg.tool_calls.length > 0) {
+    result.functionCalls = msg.tool_calls.map(tc => {
+      let args = {};
+      try {
+        args = typeof tc.function.arguments === 'string' 
+          ? JSON.parse(tc.function.arguments) 
+          : tc.function.arguments;
+      } catch (e) {
+        logger.error(`Error parsing Groq tool args: ${e.message}`);
+      }
+      return {
+        name: tc.function.name,
+        args
+      };
+    });
+  }
+
+  return { response: result, keyIndex: index };
+}
+
+/**
  * Sends a message to Gemini (or OpenRouter fallback) and handles function calling if requested.
  */
 async function generateReceptionistResponse(phone, userMessage, chatHistory, language, onProfileUpdate, onBookAppointment, onScheduleFollowup) {
@@ -250,17 +352,27 @@ async function generateReceptionistResponse(phone, userMessage, chatHistory, lan
         response = raceResult.response;
         logger.info(`Parallel Native Gemini call: Key index ${raceResult.keyIndex} won the race.`);
       } catch (geminiError) {
-        logger.error(`All native Gemini API keys failed: ${geminiError.message}. Attempting parallel failover to OpenRouter...`);
+        logger.error(`All native Gemini API keys failed: ${geminiError.message}. Attempting parallel failover to Groq...`);
         
         try {
-          // Try all OpenRouter keys in parallel using Promise.any
-          const orPromises = openRouterKeys.map((key, idx) => callOpenRouterSingleKey(key, idx, contents, functionDeclarations, systemInstruction));
-          const orRaceResult = await Promise.any(orPromises);
-          response = orRaceResult.response;
-          logger.info(`Parallel OpenRouter call: Key index ${orRaceResult.keyIndex} won the race.`);
-        } catch (orErr) {
-          logger.error(`All OpenRouter failover attempts failed: ${orErr.message}`);
-          throw new Error(`Both native Gemini and OpenRouter failed parallel races. Last error: ${orErr.message}`);
+          // Try all Groq keys in parallel using Promise.any
+          const groqPromises = groqKeys.map((key, idx) => callGroqSingleKey(key, idx, contents, functionDeclarations, systemInstruction));
+          const groqRaceResult = await Promise.any(groqPromises);
+          response = groqRaceResult.response;
+          logger.info(`Parallel Groq call: Key index ${groqRaceResult.keyIndex} won the race.`);
+        } catch (groqError) {
+          logger.error(`All Groq API keys failed: ${groqError.message}. Attempting parallel failover to OpenRouter...`);
+          
+          try {
+            // Try all OpenRouter keys in parallel using Promise.any
+            const orPromises = openRouterKeys.map((key, idx) => callOpenRouterSingleKey(key, idx, contents, functionDeclarations, systemInstruction));
+            const orRaceResult = await Promise.any(orPromises);
+            response = orRaceResult.response;
+            logger.info(`Parallel OpenRouter call: Key index ${orRaceResult.keyIndex} won the race.`);
+          } catch (orErr) {
+            logger.error(`All OpenRouter failover attempts failed: ${orErr.message}`);
+            throw new Error(`Gemini, Groq, and OpenRouter all failed parallel races. Last error: ${orErr.message}`);
+          }
         }
       }
 
