@@ -119,7 +119,7 @@ async function callGroqKey(keyItem, contents, tools, systemInstruction) {
   })) : undefined;
 
   const requestBody = {
-    model: 'llama-3.3-70b-specdec',
+    model: 'llama-3.3-70b-versatile',
     messages,
     tools: openAITools
   };
@@ -233,7 +233,7 @@ async function callOpenRouterKey(keyItem, contents, tools, systemInstruction) {
   })) : undefined;
 
   const requestBody = {
-    model: 'google/gemini-2.5-flash:free',
+    model: 'meta-llama/llama-3.3-70b-instruct:free',
     messages,
     tools: openAITools
   };
